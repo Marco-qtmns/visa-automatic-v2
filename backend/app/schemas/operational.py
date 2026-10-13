@@ -20,6 +20,7 @@ class CaseSummaryRead(BaseModel):
     visa_type: str
     purpose: str
     workflow_state: WorkflowState
+    record_status: Literal["ACTIVE", "ARCHIVED"]
     issue_count: int
     next_action: str
     queue: WorkQueue

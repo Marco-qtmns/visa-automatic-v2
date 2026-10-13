@@ -95,6 +95,17 @@ tbody tr:hover { background: #fbfdfc; }
 .summary-item span { color: var(--muted); font-size: .78rem; margin-top: 3px; }
 
 .record-list { display: grid; gap: 10px; }
+.import-card-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.import-card-grid > *, .import-card-grid .summary-item { height: 100%; }
+.import-card-grid .summary-item { display: flex; flex-direction: column; gap: 10px; }
+.import-card-grid .button-row { margin-top: auto; }
+.import-progress { display: grid; gap: 7px; margin: 14px 0; }
+.import-progress .section-heading { margin: 0; }
+.import-progress progress { width: 100%; height: 12px; accent-color: var(--accent); }
+.attention-panel > summary { cursor: pointer; list-style-position: outside; }
+.attention-panel > summary .badge { margin-left: auto; }
+.compact-records { gap: 6px; }
+.attention-record { display: grid; grid-template-columns: minmax(180px, .35fr) 1fr auto; align-items: center; gap: 12px; padding-block: 10px; }
 .record { padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
 .record-conflict { border-color: #e59b9b; background: #fffafa; }
 .record-needs-assignment { border-color: #e4b46e; background: #fffaf2; }
@@ -159,6 +170,7 @@ fieldset { margin: 0; border: 0; padding: 0; }
   .field-full { grid-column: auto; }
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .workflow-stepper { grid-template-columns: repeat(3, 1fr); }
+  .import-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .page-heading { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 560px) {
@@ -169,4 +181,5 @@ fieldset { margin: 0; border: 0; padding: 0; }
   .workflow-stepper { grid-template-columns: repeat(2, 1fr); }
   .transition-entry { grid-template-columns: 1fr; gap: 4px; }
   .transition-form { grid-template-columns: 1fr; }
+  .import-card-grid, .attention-record { grid-template-columns: 1fr; }
 }

@@ -114,6 +114,10 @@ class IntakeService:
         external_id = source_external_id.strip()[:255] if source_external_id and source_external_id.strip() else None
         existing = self._duplicate(source_type, digest, external_id, MAPPING_VERSION)
         if existing is not None:
+            if existing.record_status == "DELETED":
+                raise DomainValidationError(
+                    "this retained source was deleted and cannot be submitted again under the same mapping version"
+                )
             existing.duplicate_receive_count += 1
             record_audit(
                 self.session, actor=actor, action="INTAKE_DUPLICATE_IGNORED",
@@ -163,6 +167,8 @@ class IntakeService:
 
     def process(self, submission_id: uuid.UUID, *, actor=None) -> IntakeSubmission:
         submission = self.get(submission_id, decorate=False)
+        if submission.record_status != "ACTIVE":
+            raise DomainValidationError("only active intake submissions can be processed")
         if submission.processing_status in {"PROCESSED", "NEEDS_REVIEW"}:
             return self._decorate(submission)
         adapter = self._adapter(submission.source_type)
@@ -349,13 +355,17 @@ class IntakeService:
         self.session.commit()
         return self.process(submission.id, actor=actor)
 
-    def list(self) -> list[IntakeSubmission]:
+    def list(self, *, view: str = "active") -> list[IntakeSubmission]:
+        if view not in {"active", "archived"}:
+            raise DomainValidationError("intake view must be active or archived")
         priority = {
             "FAILED": 0, "NEEDS_REVIEW": 1, "PROCESSING": 2,
             "RECEIVED": 3, "PROCESSED": 4,
         }
         rows = list(self.session.scalars(
-            select(IntakeSubmission).order_by(IntakeSubmission.received_at.desc())
+            select(IntakeSubmission).where(
+                IntakeSubmission.record_status == ("ACTIVE" if view == "active" else "ARCHIVED")
+            ).order_by(IntakeSubmission.received_at.desc())
         ))
         rows.sort(key=lambda row: (priority[row.processing_status], -row.received_at.timestamp()))
         return [self._decorate(row) for row in rows]

@@ -30,7 +30,9 @@ class OperationalCaseService:
     def __init__(self, session: Session):
         self.session = session
 
-    def case_summaries(self) -> tuple[list[CaseSummaryRead], float]:
+    def case_summaries(self, *, view: str = "active") -> tuple[list[CaseSummaryRead], float]:
+        if view not in {"active", "archived"}:
+            raise ValueError("case view must be active or archived")
         started = time.perf_counter()
         applicant_names = {
             case_id: f"{first_name} {last_name}".strip()
@@ -102,6 +104,7 @@ class OperationalCaseService:
             .outerjoin(blocking_tasks, blocking_tasks.c.case_id == models.Case.id)
             .outerjoin(fact_conflicts, fact_conflicts.c.case_id == models.Case.id)
             .outerjoin(import_issues, import_issues.c.case_id == models.Case.id)
+            .where(models.Case.record_status == ("ACTIVE" if view == "active" else "ARCHIVED"))
             .order_by(models.Case.updated_at.desc(), models.Case.id)
         ).all()
         summaries: list[CaseSummaryRead] = []
@@ -113,6 +116,8 @@ class OperationalCaseService:
                 next_action = "Provide the next missing document"
             elif task_count:
                 next_action = "Complete the next blocking task"
+            elif record.id not in applicant_names:
+                next_action = "Add applicant information or import a source"
             else:
                 next_action = {
                     models.WorkflowState.INTAKE: "Continue application",
@@ -130,6 +135,7 @@ class OperationalCaseService:
                 visa_type=record.visa_type,
                 purpose=record.purpose,
                 workflow_state=record.workflow_state,
+                record_status=record.record_status,
                 issue_count=issue_count,
                 next_action=next_action,
                 queue=queue,

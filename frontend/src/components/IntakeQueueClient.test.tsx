@@ -24,9 +24,10 @@ const failed: IntakeSubmission = {
   failure_code: "SOURCE_VALIDATION_FAILED", failure_message: "The source could not be parsed or validated.",
   failure_detail_json: null,
   issue_count: 1, duplicate_receive_count: 0, retry_count: 0,
+  record_status: "ACTIVE", archived_at: null, archived_by: null, deleted_at: null, deleted_by: null,
   applicant_display_name: null, case_number: null, can_retry: true,
 };
-const caseSummary = { id: "case-1", case_number: "CA-2026-1", display_name: "Amina Diallo", visa_type: "canada_trv", purpose: "Visit", workflow_state: "INTAKE" as const, issue_count: 0, next_action: "Continue application", queue: "WAITING" as const, updated_at: "2026-10-07T10:00:00Z" };
+const caseSummary = { id: "case-1", case_number: "CA-2026-1", display_name: "Amina Diallo", visa_type: "canada_trv", purpose: "Visit", workflow_state: "INTAKE" as const, record_status: "ACTIVE" as const, issue_count: 0, next_action: "Continue application", queue: "WAITING" as const, updated_at: "2026-10-07T10:00:00Z" };
 
 beforeEach(() => {
   vi.clearAllMocks();

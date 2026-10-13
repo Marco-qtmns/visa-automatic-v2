@@ -126,6 +126,7 @@ class PersonBiography(Base):
     birth_city: Mapped[str | None] = mapped_column(String(128))
     birth_state_province: Mapped[str | None] = mapped_column(String(128))
     birth_country_code: Mapped[str | None] = mapped_column(String(3))
+    has_other_citizenship: Mapped[bool | None] = mapped_column(Boolean)
     marital_status: Mapped[str | None] = mapped_column(String(32))
     occupation_text: Mapped[str | None] = mapped_column(String(255))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)

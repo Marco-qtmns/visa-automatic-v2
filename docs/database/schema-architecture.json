@@ -31,7 +31,7 @@
       "documents"
     ]
   },
-  "baseline_revision": "0001_consolidated_schema",
+  "baseline_revision": "0002_record_lifecycle",
   "database_engine": "PostgreSQL 17",
   "domains": {
     "authentication": [
@@ -3423,6 +3423,51 @@
         },
         {
           "autoincrement": "auto",
+          "name": "record_status",
+          "nullable": false,
+          "postgresql_type": "VARCHAR(16)",
+          "primary_key": false,
+          "python_default": "ACTIVE",
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "archived_at",
+          "nullable": true,
+          "postgresql_type": "TIMESTAMP WITH TIME ZONE",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "archived_by",
+          "nullable": true,
+          "postgresql_type": "VARCHAR(320)",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "deleted_at",
+          "nullable": true,
+          "postgresql_type": "TIMESTAMP WITH TIME ZONE",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "deleted_by",
+          "nullable": true,
+          "postgresql_type": "VARCHAR(320)",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
           "name": "created_at",
           "nullable": false,
           "postgresql_type": "TIMESTAMP WITH TIME ZONE",
@@ -3441,6 +3486,11 @@
         }
       ],
       "constraints": [
+        {
+          "expression": "record_status IN ('ACTIVE', 'ARCHIVED', 'DELETED')",
+          "name": "case_record_status_valid",
+          "type": "check"
+        },
         {
           "expression": "cases.workflow_state IN (__[POSTCOMPILE_param_1])",
           "name": "workflow_state",
@@ -6875,12 +6925,62 @@
           "primary_key": false,
           "python_default": "0",
           "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "record_status",
+          "nullable": false,
+          "postgresql_type": "VARCHAR(16)",
+          "primary_key": false,
+          "python_default": "ACTIVE",
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "archived_at",
+          "nullable": true,
+          "postgresql_type": "TIMESTAMP WITH TIME ZONE",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "archived_by",
+          "nullable": true,
+          "postgresql_type": "VARCHAR(320)",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "deleted_at",
+          "nullable": true,
+          "postgresql_type": "TIMESTAMP WITH TIME ZONE",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "deleted_by",
+          "nullable": true,
+          "postgresql_type": "VARCHAR(320)",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
         }
       ],
       "constraints": [
         {
           "expression": "duplicate_receive_count >= 0",
           "name": "intake_duplicate_count_nonnegative",
+          "type": "check"
+        },
+        {
+          "expression": "record_status IN ('ACTIVE', 'ARCHIVED', 'DELETED')",
+          "name": "intake_record_status_valid",
           "type": "check"
         },
         {
@@ -7456,6 +7556,15 @@
           "name": "birth_country_code",
           "nullable": true,
           "postgresql_type": "VARCHAR(3)",
+          "primary_key": false,
+          "python_default": null,
+          "server_default": null
+        },
+        {
+          "autoincrement": "auto",
+          "name": "has_other_citizenship",
+          "nullable": true,
+          "postgresql_type": "BOOLEAN",
           "primary_key": false,
           "python_default": null,
           "server_default": null

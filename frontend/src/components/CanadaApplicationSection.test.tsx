@@ -5,6 +5,9 @@ import { api, type CanadaApplicationBundle } from "@/lib/api";
 import { detail } from "@/test/fixtures";
 import { CanadaApplicationSection } from "./CanadaApplicationSection";
 
+const { currentUser } = vi.hoisted(() => ({ currentUser: vi.fn() }));
+vi.mock("./AuthShell", () => ({ useCurrentUser: currentUser }));
+
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return { ...actual, api: { ...actual.api, createCanadaApplication: vi.fn(), updateCanadaTripPlan: vi.fn(), saveOfficialAnswer: vi.fn(), listCanadaImports: vi.fn(), listCanadaImportChanges: vi.fn() } };
@@ -18,6 +21,7 @@ const bundle: CanadaApplicationBundle = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  currentUser.mockReturnValue({ role: "ADMIN" });
   vi.mocked(api.listCanadaImports).mockResolvedValue([]);
   vi.mocked(api.listCanadaImportChanges).mockResolvedValue([]);
 });
@@ -57,6 +61,26 @@ it("shows family semantics from relationships instead of operational roles", asy
     }}
     onChanged={vi.fn().mockResolvedValue(undefined)}
   />);
-  expect(await screen.findByText("mother")).toBeInTheDocument();
+  expect(await screen.findByText("Mother")).toBeInTheDocument();
   expect(screen.getByText(`${detail.people[0].first_name} ${detail.people[0].last_name}`)).toBeInTheDocument();
+});
+
+it("does not render the advanced editor to a case worker", async () => {
+  currentUser.mockReturnValue({ role: "CASE_WORKER" });
+  render(<CanadaApplicationSection caseId="case-1" people={detail.people} value={bundle} onChanged={vi.fn().mockResolvedValue(undefined)} />);
+  expect(await screen.findByText("Google Forms / CSV")).toBeInTheDocument();
+  expect(screen.queryByText("Advanced: canonical application editor")).not.toBeInTheDocument();
+});
+
+it("keeps identical family names as distinct relationship rows", async () => {
+  render(<CanadaApplicationSection
+    caseId="case-1" people={detail.people}
+    value={{ ...bundle, family_relationships: [
+      { id: "family-a", related_person_id: "person-1", relationship_type: "parent", parent_type: "mother" },
+      { id: "family-b", related_person_id: "person-1", relationship_type: "parent", parent_type: "father" },
+    ] }} onChanged={vi.fn().mockResolvedValue(undefined)}
+  />);
+  expect(await screen.findAllByText("Amina Diallo")).toHaveLength(2);
+  expect(screen.getByText("Mother")).toBeInTheDocument();
+  expect(screen.getByText("Father")).toBeInTheDocument();
 });

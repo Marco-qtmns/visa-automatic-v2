@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from canada.case_store import load_case
 from canada.models import CanadaCase
+from canada.preparation import prepare_official_answers
 from canada.representative_store import load_profile_into_case
 from canada.source_readers import read_google_forms_csv
 
@@ -227,6 +228,9 @@ class CanadaLegacyImportService:
     def preview_case(self, case_id: uuid.UUID, legacy: CanadaCase, *, source_type: str,
                      source_identifier: str, source_hash: str | None = None,
                      imported_by: str | None = None) -> cm.CanadaLegacyImportRun:
+        # Populate only the narrow, fingerprint-bound official answers whose
+        # implication is already proven by the verified intake contract.
+        prepare_official_answers(legacy)
         case = self.session.get(models.Case, case_id)
         if case is None: raise DomainNotFound("Case not found")
         app = self.session.scalar(select(cm.CanadaApplication).where(cm.CanadaApplication.case_id == case_id))
@@ -293,8 +297,22 @@ class CanadaLegacyImportService:
                     key = f"{prefix}:{item.source_role or 'legacy'}:{item.source_block_index or index + 1}"
                     yield mapping, key, getattr(item, field, ""), source_classification
             elif group == "identity" and field == "other_citizenship":
+                raw_citizenship = getattr(legacy.identity, field, "")
+                answer = _yes_no(raw_citizenship)
+                if answer in {"yes", "no"}:
+                    yield (
+                        mapping, "citizenship:other:answer", raw_citizenship,
+                        source_classification,
+                    )
+                    continue
+                if _blank(raw_citizenship):
+                    continue
+                yield (
+                    mapping, "citizenship:other:answer", True,
+                    source_classification,
+                )
                 for index, citizenship in enumerate(
-                    split_country_values(getattr(legacy.identity, field, "")), start=1
+                    split_country_values(raw_citizenship), start=1
                 ):
                     yield (
                         mapping, f"citizenship:other:{index}", citizenship,
@@ -309,10 +327,13 @@ class CanadaLegacyImportService:
         group, field = mapping.legacy_path.rsplit(".", 1)
         entity_type, entity, target_field = self._target(app, group, field, record_key)
         warning_count = len(warnings)
-        proposed = self._transform(
-            group, field, raw, warnings, record_key,
-            target_entity_type=entity_type, target_field=target_field,
-        )
+        if group == "identity" and field == "other_citizenship" and record_key == "citizenship:other:answer":
+            proposed = raw if isinstance(raw, bool) else _bool(raw)
+        else:
+            proposed = self._transform(
+                group, field, raw, warnings, record_key,
+                target_entity_type=entity_type, target_field=target_field,
+            )
         if (
             group == "trip" and field == "visiting_person_or_institution"
             and getattr(self, "_host_type_proposal", None)
@@ -345,8 +366,13 @@ class CanadaLegacyImportService:
             status, conflict_type = "ambiguous", "representative_authorization_selection_required"
             warnings.append("Representative authorization remains an explicit case selection and was not created by profile import.")
         if group == "trip" and field in {"visiting_person_or_institution", "host_name"}:
-            status, conflict_type = "ambiguous", "host_type_ambiguous"
-            warnings.append("Host type must be selected explicitly; person/institution was not guessed.")
+            host_type = getattr(self, "_host_type_proposal", None)
+            if host_type:
+                if field == "host_name":
+                    conflict_type = f"resolved_host_{host_type}"
+            else:
+                status, conflict_type = "ambiguous", "host_type_ambiguous"
+                warnings.append("Host type must be selected explicitly; person/institution was not guessed.")
         elif transform_invalid:
             status, conflict_type = "ambiguous", "invalid_value"
         elif entity is not None and not _blank(current) and not _equal(current, proposed):
@@ -381,6 +407,9 @@ class CanadaLegacyImportService:
             if field in {"residence_country", "residence_status", "residence_since"}:
                 entity = self.session.scalar(select(cm.ApplicantResidence).where(cm.ApplicantResidence.application_id == app.id, cm.ApplicantResidence.is_current.is_(True)))
                 return "residence", entity, {"residence_country":"country_code", "residence_status":"immigration_status_code", "residence_since":"resident_since"}[field]
+            if field == "other_citizenship" and key == "citizenship:other:answer":
+                entity = self.session.get(cm.PersonBiography, applicant.id) if applicant else None
+                return "person_biography", entity, "has_other_citizenship"
             if field in {"nationality", "other_citizenship"}:
                 entity = self.session.scalar(select(cm.PersonCitizenship).where(cm.PersonCitizenship.person_id == applicant.id, cm.PersonCitizenship.is_primary.is_(field == "nationality"))) if applicant else None
                 return "citizenship", entity, "country_code"
@@ -1124,6 +1153,12 @@ class CanadaLegacyImportService:
         trip = self.session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == app.id))
         if et == "funding_source":
             if trip is None: trip = cm.TripPlan(application_id=app.id); self.session.add(trip); self.session.flush()
+            existing = self.session.scalar(select(cm.FundingSource).where(
+                cm.FundingSource.trip_plan_id == trip.id,
+                cm.FundingSource.is_primary.is_(True),
+            ))
+            if existing is not None:
+                return existing
             return cm.FundingSource(trip_plan_id=trip.id, payer_kind="other", is_primary=True, sort_order=0)
         if et in {"family_person", "family_biography", "family_relationship"}:
             rel_key = self._family_key(item)

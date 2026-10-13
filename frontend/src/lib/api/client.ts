@@ -40,6 +40,7 @@ import type {
   IntakeSubmission,
   DynamicCaseStatus,
   CanonicalValueRevision,
+  CountryOption,
 } from "./types";
 
 const API_BASE_URL = (
@@ -160,7 +161,7 @@ export type AuditEvent = {
   case_id: string | null; outcome: string; metadata_json: Record<string, unknown>;
 };
 
-const json = (method: "POST" | "PATCH" | "PUT", body: unknown): RequestInit => ({
+const json = (method: "POST" | "PATCH" | "PUT" | "DELETE", body: unknown): RequestInit => ({
   method,
   body: JSON.stringify(body),
 });
@@ -171,7 +172,8 @@ export const api = {
   verifyMfa: (challengeToken: string, code: string) =>
     request<Authenticated>("/auth/mfa/verify", json("POST", { challenge_token: challengeToken, code })),
   me: () => request<{ user: AuthUser }>("/auth/me"),
-  bootstrap: () => request<ApplicationBootstrap>("/app/bootstrap"),
+  bootstrap: (caseView: "active" | "archived" = "active") =>
+    request<ApplicationBootstrap>(`/app/bootstrap?case_view=${caseView}`),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   listUsers: () => request<AdminUser[]>("/auth/users"),
   createUser: (payload: { email: string; display_name: string; password: string; role: AuthUser["role"] }) =>
@@ -184,7 +186,9 @@ export const api = {
     request<{ status: "ok"; user_id: string; revoked_sessions: number }>(`/auth/users/${userId}/mfa/reset`, json("POST", {})),
   listSecurityAudit: () => request<AuditEvent[]>("/auth/audit-events"),
   listCaseAudit: (caseId: string) => request<AuditEvent[]>(`/cases/${caseId}/audit-events`),
-  listIntakeSubmissions: () => request<IntakeSubmission[]>("/intake/submissions"),
+  listCountryOptions: () => request<CountryOption[]>("/reference/countries"),
+  listIntakeSubmissions: (view: "active" | "archived" = "active") =>
+    request<IntakeSubmission[]>(`/intake/submissions?view=${view}`),
   intakeMetrics: () => request<IntakeMetrics>("/intake/metrics"),
   uploadGoogleFormsIntake: (file: File, sourceExternalId?: string, caseId?: string) => {
     const body = new FormData(); body.set("file", file);
@@ -194,12 +198,21 @@ export const api = {
   },
   retryIntakeSubmission: (submissionId: string, caseId?: string) =>
     request<IntakeSubmission>(`/intake/submissions/${submissionId}/retry`, json("POST", { case_id: caseId || null })),
-  listCases: () => request<CaseRecord[]>("/cases"),
+  archiveIntakeSubmission: (submissionId: string) =>
+    request<IntakeSubmission>(`/intake/submissions/${submissionId}/archive`, json("POST", {})),
+  restoreIntakeSubmission: (submissionId: string) =>
+    request<IntakeSubmission>(`/intake/submissions/${submissionId}/restore`, json("POST", {})),
+  deleteIntakeSubmission: (submissionId: string) =>
+    request<IntakeSubmission>(`/intake/submissions/${submissionId}`, json("DELETE", { confirmation: "DELETE" })),
+  listCases: (view: "active" | "archived" = "active") => request<CaseRecord[]>(`/cases?view=${view}`),
   createCase: (payload: CaseCreate) =>
     request<CaseRecord>("/cases", json("POST", payload)),
   getCase: (caseId: string) => request<CaseRecord>(`/cases/${caseId}`),
   updateCase: (caseId: string, payload: CaseUpdate) =>
     request<CaseRecord>(`/cases/${caseId}`, json("PATCH", payload)),
+  archiveCase: (caseId: string) => request<CaseRecord>(`/cases/${caseId}/archive`, json("POST", {})),
+  restoreCase: (caseId: string) => request<CaseRecord>(`/cases/${caseId}/restore`, json("POST", {})),
+  deleteCase: (caseId: string) => request<CaseRecord>(`/cases/${caseId}`, json("DELETE", { confirmation: "DELETE" })),
   getDynamicCaseStatus: (caseId: string) =>
     request<DynamicCaseStatus>(`/cases/${caseId}/dynamic-status`),
   applyCanonicalDecisions: (caseId: string, decisions: { field_path: string; value_json: unknown; expected_revision: number }[], reviewedBy: string) =>
@@ -457,8 +470,8 @@ export const api = {
     request<import("./types").CanadaImportSectionConfirmResult>(`/canada-imports/${importId}/confirm-section`, json("POST", { items, reviewed_by: reviewedBy ?? null })),
 };
 
-export async function loadCaseSummaries(): Promise<CaseSummary[]> {
-  return (await api.bootstrap()).case_summary;
+export async function loadCaseSummaries(view: "active" | "archived" = "active"): Promise<CaseSummary[]> {
+  return (await api.bootstrap(view)).case_summary;
 }
 
 class CaseDetailLoadError extends Error {}

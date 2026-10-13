@@ -52,7 +52,7 @@ def _environment_names(path: Path) -> set[str]:
 
 def test_environment_contract_matches_example_and_preflight():
     contract = json.loads((PROJECT_ROOT / "deployment/environment-contract.json").read_text())
-    assert contract["expected_alembic_head"] == "0001_consolidated_schema"
+    assert contract["expected_alembic_head"] == "0002_record_lifecycle"
     variables = contract["variables"]
     assert len({item["name"] for item in variables}) == len(variables)
     for item in variables:
@@ -292,9 +292,9 @@ def test_backend_image_is_resolved_from_compose_after_build():
 
 def test_accepted_migration_chain_has_one_expected_head():
     script = ScriptDirectory.from_config(Config(str(PROJECT_ROOT / "backend/alembic.ini")))
-    assert script.get_heads() == ["0001_consolidated_schema"]
+    assert script.get_heads() == ["0002_record_lifecycle"]
     revisions = list(script.walk_revisions(base="base", head="heads"))
-    assert [item.revision for item in revisions] == ["0001_consolidated_schema"]
+    assert [item.revision for item in revisions] == ["0002_record_lifecycle", "0001_consolidated_schema"]
 
 
 def test_migration_revision_graph_fits_alembic_version_column():
@@ -330,7 +330,7 @@ def test_migration_revision_graph_fits_alembic_version_column():
             children[parent].append(revision)
     assert all(len(items) <= 1 for items in children.values()), "migration graph branches"
     heads = [revision for revision, items in children.items() if not items]
-    assert heads == ["0001_consolidated_schema"]
+    assert heads == ["0002_record_lifecycle"]
 
     visited: set[str] = set()
     current: str | None = roots[0]
@@ -484,7 +484,7 @@ def test_deployment_scripts_guard_destructive_operations():
     assert "docker compose down" not in rebuild
     assert "docker volume rm" not in rebuild
     assert "rm -rf" not in rebuild
-    assert 'EXPECTED_REVISION="0001_consolidated_schema"' in rebuild
+    assert 'EXPECTED_REVISION="0002_record_lifecycle"' in rebuild
     assert 'EXPECTED_TABLE_COUNT="57"' in rebuild
     smoke = scripts["raspberry-smoke.sh"]
     assert 'assert_unauthenticated "/documents/$document_id/content"' in smoke
@@ -646,11 +646,11 @@ def test_synthetic_deployment_fixture_generates_and_verifies(
         ))
         session.execute(
             text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
-            {"revision": "0001_consolidated_schema"},
+            {"revision": "0002_record_lifecycle"},
         )
     restored = verify_restored_staging.verify()
     assert restored["status"] == "PASS"
-    assert restored["alembic_revision"] == "0001_consolidated_schema"
+    assert restored["alembic_revision"] == "0002_record_lifecycle"
     assert restored["current_package_count"] == 1
     assert set(restored["artifact_types"]) == expected
     engine.dispose()

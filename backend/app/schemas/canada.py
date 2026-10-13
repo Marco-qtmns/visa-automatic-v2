@@ -71,6 +71,7 @@ class BiographyWrite(BaseModel):
     birth_city: str | None = Field(default=None, max_length=128)
     birth_state_province: str | None = Field(default=None, max_length=128)
     birth_country_code: str | None = Field(default=None, min_length=2, max_length=3)
+    has_other_citizenship: bool | None = None
     marital_status: str | None = Field(default=None, max_length=32)
     occupation_text: str | None = Field(default=None, max_length=255)
 

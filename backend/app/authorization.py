@@ -20,6 +20,8 @@ class Permission(StrEnum):
     CASE_READ = "CASE_READ"
     CASE_CREATE = "CASE_CREATE"
     CASE_EDIT = "CASE_EDIT"
+    CASE_ARCHIVE = "CASE_ARCHIVE"
+    CASE_DELETE = "CASE_DELETE"
     FACT_READ = "FACT_READ"
     FACT_EDIT = "FACT_EDIT"
     DOCUMENT_READ = "DOCUMENT_READ"
@@ -35,6 +37,9 @@ class Permission(StrEnum):
     CASE_AUDIT_READ = "CASE_AUDIT_READ"
     INTAKE_READ = "INTAKE_READ"
     INTAKE_PROCESS = "INTAKE_PROCESS"
+    INTAKE_ARCHIVE = "INTAKE_ARCHIVE"
+    INTAKE_DELETE = "INTAKE_DELETE"
+    ADVANCED_APPLICATION_EDIT = "ADVANCED_APPLICATION_EDIT"
     AUDIT_READ = "AUDIT_READ"
     USER_READ = "USER_READ"
     USER_CREATE = "USER_CREATE"
@@ -54,7 +59,7 @@ class RouteAuthorizationClass(StrEnum):
 
 
 WORK_PERMISSIONS = frozenset({
-    Permission.CASE_READ, Permission.CASE_CREATE, Permission.CASE_EDIT,
+    Permission.CASE_READ, Permission.CASE_CREATE, Permission.CASE_EDIT, Permission.CASE_ARCHIVE,
     Permission.FACT_READ, Permission.FACT_EDIT,
     Permission.DOCUMENT_READ, Permission.DOCUMENT_UPLOAD, Permission.DOCUMENT_EDIT,
     Permission.REQUIREMENT_EDIT, Permission.TASK_EDIT,
@@ -62,7 +67,9 @@ WORK_PERMISSIONS = frozenset({
     Permission.WORKFLOW_WORK,
 })
 
-INTAKE_PERMISSIONS = frozenset({Permission.INTAKE_READ, Permission.INTAKE_PROCESS})
+INTAKE_PERMISSIONS = frozenset({
+    Permission.INTAKE_READ, Permission.INTAKE_PROCESS, Permission.INTAKE_ARCHIVE,
+})
 
 ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
     UserRole.CASE_WORKER: WORK_PERMISSIONS | INTAKE_PERMISSIONS,
@@ -130,7 +137,7 @@ def _assign(permission: Permission, *endpoint_names: str) -> None:
 
 
 _assign(Permission.CASE_READ,
-    "application_bootstrap", "list_cases", "get_case", "list_persons", "get_person", "list_conversations",
+    "application_bootstrap", "list_cases", "get_case", "list_country_options", "list_persons", "get_person", "list_conversations",
     "list_conversation_messages", "get_workflow", "get_next_action", "get_application",
     "get_bundle", "list_imports", "get_import", "list_changes",
     "get_dynamic_case_status", "list_canonical_revisions",
@@ -139,18 +146,22 @@ _assign(Permission.LEGACY_DIAGNOSTICS_READ, "mapping_specification", "import_dia
 _assign(Permission.CASE_CREATE, "create_case", "preview_import", "create_import")
 _assign(Permission.CASE_EDIT,
     "update_case", "create_person", "update_person", "paste_whatsapp_conversation",
-    "upload_whatsapp_conversation", "extract_conversation_facts", "create_application",
-    "update_application", "select_applicant", "assign_role", "upsert_biography",
-    "create_citizenship", "create_identifier", "create_contact", "create_address",
-    "update_address", "create_residence", "create_travel_document", "upsert_trip_plan",
-    "create_organization", "create_funding_source", "create_host",
-    "create_family_relationship", "create_education", "create_activity",
-    "create_residence_history", "create_travel_history", "reorder_collection",
-    "delete_collection_record", "upsert_official_answer", "upsert_official_explanation",
-    "create_representative_profile", "revise_representative_profile",
-    "authorize_representative", "add_provenance", "apply_import", "accept_change",
+    "upload_whatsapp_conversation", "extract_conversation_facts", "apply_import", "accept_change",
     "reject_change", "resolve_change", "confirm_change", "confirm_section",
-    "apply_canonical_decisions",
+    "apply_canonical_decisions", "create_activity", "upsert_official_answer",
+)
+_assign(Permission.CASE_ARCHIVE, "archive_case", "restore_case")
+_assign(Permission.CASE_DELETE, "delete_case")
+_assign(Permission.ADVANCED_APPLICATION_EDIT,
+    "create_application", "update_application", "select_applicant", "assign_role",
+    "upsert_biography", "create_citizenship", "create_identifier", "create_contact",
+    "create_address", "update_address", "create_residence", "create_travel_document",
+    "upsert_trip_plan", "create_organization", "create_funding_source", "create_host",
+    "create_family_relationship", "create_education",
+    "create_residence_history", "create_travel_history", "reorder_collection",
+    "delete_collection_record", "upsert_official_explanation",
+    "create_representative_profile", "revise_representative_profile",
+    "authorize_representative", "add_provenance",
 )
 _assign(Permission.FACT_READ,
     "list_facts", "get_fact", "list_fact_extraction_runs", "list_fact_candidates",
@@ -197,6 +208,8 @@ _assign(Permission.INTAKE_READ,
 _assign(Permission.INTAKE_PROCESS,
     "receive_google_forms_csv", "retry_intake_submission",
 )
+_assign(Permission.INTAKE_ARCHIVE, "archive_intake_submission", "restore_intake_submission")
+_assign(Permission.INTAKE_DELETE, "delete_intake_submission")
 
 PUBLIC_ENDPOINTS = frozenset({"health", "health_live", "health_ready", "login", "verify_mfa"})
 AUTHENTICATED_ENDPOINTS = frozenset({"me", "logout"})

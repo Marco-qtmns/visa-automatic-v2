@@ -1,7 +1,7 @@
 import type { CaseDetailBundle } from "@/lib/api";
 
 export const detail: CaseDetailBundle = {
-  case: { id: "case-1", case_number: "CA-300", visa_type: "TRV", purpose: "Visit", workflow_state: "INTAKE", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+  case: { id: "case-1", case_number: "CA-300", visa_type: "TRV", purpose: "Visit", workflow_state: "INTAKE", record_status: "ACTIVE", archived_at: null, archived_by: null, deleted_at: null, deleted_by: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
   people: [{ id: "person-1", case_id: "case-1", first_name: "Amina", last_name: "Diallo", roles: ["applicant"], created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }],
   facts: [{ id: "fact-1", case_id: "case-1", person_id: "person-1", key: "passport.number", value_json: "P123", source_type: "manual", source_reference: "employee", confidence: 0.8, status: "conflict", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }],
   conversations: [],

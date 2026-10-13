@@ -38,7 +38,10 @@ class CoreDataService:
         return value
 
     def _case(self, case_id: uuid.UUID) -> models.Case:
-        return self._get(models.Case, case_id)
+        case = self._get(models.Case, case_id)
+        if case.record_status == "DELETED":
+            raise DomainNotFound("Case not found")
+        return case
 
     def _belongs_to_case(self, model: type[ModelT], object_id: uuid.UUID | None, case_id: uuid.UUID, label: str) -> ModelT | None:
         if object_id is None:
@@ -80,8 +83,13 @@ class CoreDataService:
             values["id"] = case_id
         return self._save(models.Case(**values), before_commit=before_commit)
 
-    def list_cases(self) -> list[models.Case]:
-        return list(self.session.scalars(select(models.Case).order_by(models.Case.created_at)))
+    def list_cases(self, *, view: str = "active") -> list[models.Case]:
+        if view not in {"active", "archived"}:
+            raise DomainValidationError("case view must be active or archived")
+        status = "ACTIVE" if view == "active" else "ARCHIVED"
+        return list(self.session.scalars(select(models.Case).where(
+            models.Case.record_status == status
+        ).order_by(models.Case.created_at)))
 
     def get_case(self, case_id: uuid.UUID) -> models.Case:
         return self._case(case_id)

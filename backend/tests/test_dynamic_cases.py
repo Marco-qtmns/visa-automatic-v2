@@ -172,3 +172,37 @@ def test_stale_manual_update_cannot_overwrite_newer_canonical_value(session):
         assert status["canonical_values"]["trip.purpose"] == "Tourism"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_manual_biography_resolves_sex_and_birth_country_blockers_and_host_remains_editable(session):
+    client = client_for(session)
+    try:
+        case = create_case(client, "BIOGRAPHY-HOST")
+        host = client.post(f"/cases/{case['id']}/persons", json={
+            "first_name": "Ana", "last_name": "Host", "roles": ["other"],
+        }).json()
+        apply(client, case["id"], [
+            ("applicant.given_names", "Amina"),
+            ("applicant.family_name", "Diallo"),
+            ("applicant.biography.sex", "female"),
+            ("applicant.biography.birth_country_code", "BRA"),
+            ("host.exists", False),
+        ])
+        status = client.get(f"/cases/{case['id']}/dynamic-status").json()
+        paths = {item["field_path"] for item in status["issues"]}
+        assert "applicant.biography.sex" not in paths
+        assert "applicant.biography.birth_country_code" not in paths
+
+        apply(client, case["id"], [
+            ("host.exists", True), ("host.person_id", host["id"]),
+        ], "financial evidence review")
+        case_id = uuid.UUID(case["id"])
+        application = session.scalar(select(cm.CanadaApplication).where(cm.CanadaApplication.case_id == case_id))
+        trip = session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == application.id))
+        selected_host = session.scalar(select(cm.HostRecord).where(cm.HostRecord.trip_plan_id == trip.id))
+        assert str(selected_host.person_id) == host["id"]
+        revisions = client.get(f"/cases/{case['id']}/canonical-revisions").json()
+        host_revisions = [item for item in revisions if item["field_path"] == "host.exists"]
+        assert {item["value_json"] for item in host_revisions} == {False, True}
+    finally:
+        app.dependency_overrides.clear()

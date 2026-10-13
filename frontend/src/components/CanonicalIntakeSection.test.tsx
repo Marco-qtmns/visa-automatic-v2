@@ -22,7 +22,6 @@ it("saves manual intake as one canonical decision batch with explicit unknowns",
   await user.click(screen.getByRole("button", { name: "Save canonical information" }));
   expect(api.applyCanonicalDecisions).toHaveBeenCalledWith("case-1", expect.arrayContaining([
     { field_path: "sponsor.exists", value_json: false, expected_revision: 0 },
-    { field_path: "host.exists", value_json: null, expected_revision: 0 },
     { field_path: "trip.payer", value_json: "applicant", expected_revision: 0 },
     { field_path: "commercial.instructions", value_json: "Prioritize travel dates", expected_revision: 0 },
   ]), "manual-ui");

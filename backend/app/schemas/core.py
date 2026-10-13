@@ -75,6 +75,11 @@ class CaseRead(ReadModel):
     visa_type: str
     purpose: str
     workflow_state: WorkflowState
+    record_status: Literal["ACTIVE", "ARCHIVED", "DELETED"]
+    archived_at: datetime | None
+    archived_by: str | None
+    deleted_at: datetime | None
+    deleted_by: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -84,7 +89,21 @@ class CanonicalDecisionItem(BaseModel):
 
     field_path: Literal[
         "case.visa_type", "applicant.given_names", "applicant.family_name",
+        "applicant.biography.date_of_birth", "applicant.biography.other_names",
+        "applicant.biography.sex", "applicant.biography.birth_city",
+        "applicant.biography.birth_state_province", "applicant.biography.birth_country_code",
+        "applicant.biography.marital_status", "applicant.citizenship.primary",
+        "applicant.current_residence.country_code",
+        "applicant.passport.number", "applicant.passport.issuing_country_code",
+        "applicant.passport.issue_date", "applicant.passport.expiry_date",
+        "applicant.residential_address.street_number", "applicant.residential_address.street_name",
+        "applicant.residential_address.city", "applicant.residential_address.state_province",
+        "applicant.residential_address.postal_code", "applicant.residential_address.country_code",
+        "application.mailing_same_as_residential", "application.official_application_date",
         "contact.email", "contact.phone", "trip.purpose", "sponsor.exists",
+        "trip.imm5257_purpose_code", "trip.arrival_date", "trip.departure_date",
+        "trip.available_funds_amount", "trip.available_funds_currency",
+        "trip.funds_source_reference",
         "sponsor.person_id", "host.exists", "host.person_id", "trip.payer", "destination.country_code",
         "commercial.instructions", "special.circumstances", "additional.notes",
     ]
@@ -120,6 +139,16 @@ class CanonicalValueRevisionRead(ReadModel):
     reviewed_by: str | None
     reviewed_at: datetime | None
     created_at: datetime
+
+
+class CountryOptionRead(BaseModel):
+    code: str
+    label: str
+
+
+class DeleteRecordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmation: Literal["DELETE"]
 
 
 class CaseIssueRead(BaseModel):

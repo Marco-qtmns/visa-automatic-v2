@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -12,6 +12,7 @@ from ..models import canada as cm
 from ..schemas import core as schemas
 from .canada_preparation import CanadaPreparationReadinessService
 from .core import DomainNotFound, DomainValidationError
+from .country_normalization import normalize_country
 from .person_roles import add_authoritative_role
 from .requirements import RequirementEngine
 
@@ -23,10 +24,35 @@ FACT_FIELDS = frozenset({
 BOOLEAN_FIELDS = frozenset({"sponsor.exists", "host.exists"})
 TEXT_FIELDS = frozenset({
     "case.visa_type", "applicant.given_names", "applicant.family_name",
+    "applicant.biography.other_names", "applicant.biography.birth_city",
+    "applicant.biography.birth_state_province",
     "contact.email", "contact.phone", "trip.purpose", "destination.country_code",
     "commercial.instructions", "special.circumstances", "additional.notes",
+    "applicant.passport.number", "applicant.residential_address.street_number",
+    "applicant.residential_address.street_name", "applicant.residential_address.city",
+    "applicant.residential_address.state_province", "applicant.residential_address.postal_code",
+    "trip.imm5257_purpose_code", "trip.available_funds_currency", "trip.funds_source_reference",
 })
 PERSON_REFERENCE_FIELDS = frozenset({"sponsor.person_id", "host.person_id"})
+BIOGRAPHY_FIELDS = frozenset({
+    "applicant.biography.date_of_birth", "applicant.biography.other_names",
+    "applicant.biography.sex", "applicant.biography.birth_city",
+    "applicant.biography.birth_state_province", "applicant.biography.birth_country_code",
+    "applicant.biography.marital_status",
+})
+SEX_VALUES = frozenset({"female", "male", "another_gender", "unknown"})
+MARITAL_STATUS_VALUES = frozenset({
+    "single", "married", "common_law", "widowed", "divorced",
+    "separated", "annulled_marriage", "unknown",
+})
+DATE_FIELDS = frozenset({
+    "applicant.passport.issue_date", "applicant.passport.expiry_date",
+    "application.official_application_date", "trip.arrival_date", "trip.departure_date",
+})
+COUNTRY_FIELDS = frozenset({
+    "applicant.current_residence.country_code", "applicant.passport.issuing_country_code",
+    "applicant.residential_address.country_code",
+})
 
 
 class CanonicalDecisionService:
@@ -139,6 +165,32 @@ class CanonicalDecisionService:
                 raise DomainValidationError("trip.payer must be applicant, sponsor, other, mixed, or unknown")
             if path in TEXT_FIELDS and value is not None and (not isinstance(value, str) or not value.strip()):
                 raise DomainValidationError(f"{path} must be non-empty text or unknown")
+            if path == "application.mailing_same_as_residential" and value is not None and not isinstance(value, bool):
+                raise DomainValidationError("mailing-address choice must be yes, no, or unresolved")
+            if path in DATE_FIELDS and value is not None:
+                try:
+                    date.fromisoformat(str(value))
+                except ValueError:
+                    raise DomainValidationError(f"{path} must use YYYY-MM-DD") from None
+            if path == "applicant.biography.date_of_birth" and value is not None:
+                try:
+                    parsed = date.fromisoformat(str(value))
+                except ValueError:
+                    raise DomainValidationError("date of birth must use YYYY-MM-DD") from None
+                if parsed > date.today():
+                    raise DomainValidationError("date of birth cannot be in the future")
+            if path == "applicant.biography.sex" and value is not None and value not in SEX_VALUES:
+                raise DomainValidationError("sex must be female, male, another gender, unknown, or unresolved")
+            if path == "applicant.biography.marital_status" and value is not None and value not in MARITAL_STATUS_VALUES:
+                raise DomainValidationError("marital status is not supported by the official application")
+            if path in {"applicant.biography.birth_country_code", "applicant.citizenship.primary"} and value is not None:
+                if normalize_country(value).code is None:
+                    raise DomainValidationError(f"{path} must be a recognized ISO country")
+            if path in COUNTRY_FIELDS and value is not None and normalize_country(value).code is None:
+                raise DomainValidationError(f"{path} must be a recognized ISO country")
+            if path == "trip.available_funds_amount" and value is not None:
+                if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+                    raise DomainValidationError("available funds must be a non-negative number")
             if path == "destination.country_code" and value is not None and len(value.strip()) not in {2, 3}:
                 raise DomainValidationError("destination country must be an ISO alpha-2 or alpha-3 code")
             if path in PERSON_REFERENCE_FIELDS and value is not None:
@@ -179,6 +231,130 @@ class CanonicalDecisionService:
             old = getattr(applicant, attr)
             setattr(applicant, attr, value.strip())
             return old, "person", applicant.id
+        if path in BIOGRAPHY_FIELDS:
+            if applicant is None:
+                raise DomainValidationError("canonical applicant is unavailable")
+            biography = self.session.get(cm.PersonBiography, applicant.id)
+            if biography is None:
+                biography = cm.PersonBiography(person_id=applicant.id)
+                self.session.add(biography)
+            attr = path.rsplit(".", 1)[1]
+            old = getattr(biography, attr)
+            if attr == "date_of_birth":
+                normalized = date.fromisoformat(str(value)) if value is not None else None
+            elif attr == "birth_country_code":
+                normalized = normalize_country(value).code if value is not None else None
+            else:
+                normalized = value.strip() if isinstance(value, str) else value
+            setattr(biography, attr, normalized)
+            self.session.flush()
+            return old.isoformat() if isinstance(old, date) else old, "person_biography", applicant.id
+        if path == "applicant.citizenship.primary":
+            if applicant is None:
+                raise DomainValidationError("canonical applicant is unavailable")
+            code = normalize_country(value).code if value is not None else None
+            current = self.session.scalar(select(cm.PersonCitizenship).where(
+                cm.PersonCitizenship.person_id == applicant.id,
+                cm.PersonCitizenship.is_primary.is_(True),
+            ))
+            old = current.country_code if current else None
+            if code is None:
+                if current is not None:
+                    self.session.delete(current)
+                return old, "citizenship", current.id if current else None
+            matching = self.session.scalar(select(cm.PersonCitizenship).where(
+                cm.PersonCitizenship.person_id == applicant.id,
+                cm.PersonCitizenship.country_code == code,
+            ))
+            if current is not None and current is not matching:
+                current.is_primary = False
+            if matching is None:
+                matching = cm.PersonCitizenship(
+                    person_id=applicant.id, country_code=code,
+                    citizenship_type="citizen", is_primary=True, sort_order=0,
+                )
+                self.session.add(matching)
+            else:
+                matching.is_primary = True
+                matching.sort_order = 0
+            self.session.flush()
+            return old, "citizenship", matching.id
+        if path == "applicant.current_residence.country_code":
+            if app is None:
+                raise DomainValidationError("canonical application is unavailable")
+            residence = self.session.scalar(select(cm.ApplicantResidence).where(
+                cm.ApplicantResidence.application_id == app.id,
+                cm.ApplicantResidence.is_current.is_(True),
+            ))
+            old = residence.country_code if residence else None
+            code = normalize_country(value).code if value is not None else None
+            if code is None:
+                if residence is not None: self.session.delete(residence)
+                return old, "applicant_residence", residence.id if residence else None
+            if residence is None:
+                residence = cm.ApplicantResidence(application_id=app.id, country_code=code, is_current=True)
+                self.session.add(residence); self.session.flush()
+            else:
+                residence.country_code = code
+            return old, "applicant_residence", residence.id
+        if path.startswith("applicant.passport."):
+            if app is None or applicant is None:
+                raise DomainValidationError("canonical applicant passport is unavailable")
+            passport = self.session.scalar(select(cm.TravelDocument).where(
+                cm.TravelDocument.application_id == app.id,
+                cm.TravelDocument.document_type == "passport",
+                cm.TravelDocument.is_primary.is_(True),
+            ))
+            values = {item.field_path: item.value_json for item in payload.decisions}
+            if passport is None:
+                number = values.get("applicant.passport.number")
+                issuer = values.get("applicant.passport.issuing_country_code")
+                if not number or not issuer:
+                    raise DomainValidationError("passport number and issuing country must be saved together")
+                passport = cm.TravelDocument(
+                    application_id=app.id, person_id=applicant.id, document_type="passport",
+                    number=str(number).strip(), issuing_country_code=normalize_country(issuer).code,
+                    is_primary=True, sort_order=0,
+                )
+                self.session.add(passport); self.session.flush()
+            attr = path.rsplit(".", 1)[1]
+            old = getattr(passport, attr)
+            normalized = (date.fromisoformat(str(value)) if value is not None else None) if attr in {"issue_date", "expiry_date"} else (
+                normalize_country(value).code if attr == "issuing_country_code" and value is not None else
+                (value.strip() if isinstance(value, str) else value)
+            )
+            setattr(passport, attr, normalized)
+            self.session.flush()
+            return old.isoformat() if isinstance(old, date) else old, "travel_document", passport.id
+        if path.startswith("applicant.residential_address."):
+            if app is None:
+                raise DomainValidationError("canonical application is unavailable")
+            address = self.session.scalar(select(cm.Address).where(
+                cm.Address.application_id == app.id, cm.Address.context == "residential",
+                cm.Address.owner_id == app.id,
+            ))
+            if address is None:
+                address = cm.Address(application_id=app.id, context="residential", owner_id=app.id)
+                self.session.add(address); self.session.flush()
+            attr = path.rsplit(".", 1)[1]
+            old = getattr(address, attr)
+            normalized = normalize_country(value).code if attr == "country_code" and value is not None else (
+                value.strip() if isinstance(value, str) else value
+            )
+            setattr(address, attr, normalized)
+            address.review_state = "confirmed"
+            return old, "address", address.id
+        if path == "application.mailing_same_as_residential":
+            if app is None: raise DomainValidationError("canonical application is unavailable")
+            old = app.mailing_same_as_residential
+            app.mailing_same_as_residential = value
+            return old, "application", app.id
+        if path == "application.official_application_date":
+            if app is None: raise DomainValidationError("canonical application is unavailable")
+            old = app.official_application_date
+            app.official_application_date = date.fromisoformat(str(value)) if value is not None else None
+            app.application_date_review_state = "confirmed" if value is not None else "needs_review"
+            return old.isoformat() if old else None, "application", app.id
         if path in {"contact.email", "contact.phone"}:
             if applicant is None:
                 raise DomainValidationError("canonical applicant is unavailable")
@@ -216,6 +392,23 @@ class CanonicalDecisionService:
             trip.purpose_review_state = "confirmed" if value is not None else "needs_review"
             case.purpose = value.strip()[:128] if value is not None else "To be confirmed"
             return old, "trip_plan", trip.id
+        if path.startswith("trip.") and path in {
+            "trip.imm5257_purpose_code", "trip.arrival_date", "trip.departure_date",
+            "trip.available_funds_amount", "trip.available_funds_currency", "trip.funds_source_reference",
+        }:
+            if app is None: raise DomainValidationError("canonical application is unavailable")
+            trip = self.session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == app.id))
+            if trip is None:
+                trip = cm.TripPlan(application_id=app.id); self.session.add(trip); self.session.flush()
+            attr = path.removeprefix("trip.")
+            old = getattr(trip, attr)
+            normalized = date.fromisoformat(str(value)) if value is not None and attr in {"arrival_date", "departure_date"} else (
+                value.strip().upper() if isinstance(value, str) and attr == "available_funds_currency" else
+                (value.strip() if isinstance(value, str) else value)
+            )
+            setattr(trip, attr, normalized)
+            if attr == "imm5257_purpose_code": trip.purpose_review_state = "confirmed" if value is not None else "needs_review"
+            return old.isoformat() if isinstance(old, date) else float(old) if old is not None and attr == "available_funds_amount" else old, "trip_plan", trip.id
         if path in PERSON_REFERENCE_FIELDS:
             if app is None:
                 raise DomainValidationError("canonical application is unavailable")
@@ -434,6 +627,7 @@ class DynamicCaseService:
         applicant = self.session.get(models.Person, app.applicant_person_id) if app and app.applicant_person_id else None
         trip = self.session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == app.id)) if app else None
         contacts = {}
+        biography = self.session.get(cm.PersonBiography, applicant.id) if applicant else None
         if applicant:
             for item in self.session.scalars(select(cm.ContactPoint).where(
                 cm.ContactPoint.person_id == applicant.id, cm.ContactPoint.is_primary.is_(True)
@@ -443,9 +637,40 @@ class DynamicCaseService:
             "case.visa_type": case.visa_type,
             "applicant.given_names": applicant.first_name if applicant else None,
             "applicant.family_name": applicant.last_name if applicant else None,
+            "applicant.biography.date_of_birth": biography.date_of_birth.isoformat() if biography and biography.date_of_birth else None,
+            "applicant.biography.other_names": biography.other_names if biography else None,
+            "applicant.biography.sex": biography.sex if biography else None,
+            "applicant.biography.birth_city": biography.birth_city if biography else None,
+            "applicant.biography.birth_state_province": biography.birth_state_province if biography else None,
+            "applicant.biography.birth_country_code": biography.birth_country_code if biography else None,
+            "applicant.biography.marital_status": biography.marital_status if biography else None,
             "contact.email": contacts.get("email"), "contact.phone": contacts.get("phone"),
             "trip.purpose": trip.intake_purpose_text if trip else None,
+            "application.mailing_same_as_residential": app.mailing_same_as_residential if app else None,
+            "application.official_application_date": app.official_application_date.isoformat() if app and app.official_application_date else None,
+            "trip.imm5257_purpose_code": trip.imm5257_purpose_code if trip else None,
+            "trip.arrival_date": trip.arrival_date.isoformat() if trip and trip.arrival_date else None,
+            "trip.departure_date": trip.departure_date.isoformat() if trip and trip.departure_date else None,
+            "trip.available_funds_amount": float(trip.available_funds_amount) if trip and trip.available_funds_amount is not None else None,
+            "trip.available_funds_currency": trip.available_funds_currency if trip else None,
+            "trip.funds_source_reference": trip.funds_source_reference if trip else None,
         }
+        residence = self.session.scalar(select(cm.ApplicantResidence).where(
+            cm.ApplicantResidence.application_id == app.id, cm.ApplicantResidence.is_current.is_(True),
+        )) if app else None
+        values["applicant.current_residence.country_code"] = residence.country_code if residence else None
+        passport = self.session.scalar(select(cm.TravelDocument).where(
+            cm.TravelDocument.application_id == app.id, cm.TravelDocument.document_type == "passport",
+            cm.TravelDocument.is_primary.is_(True),
+        )) if app else None
+        for field in ("number", "issuing_country_code", "issue_date", "expiry_date"):
+            current = getattr(passport, field) if passport else None
+            values[f"applicant.passport.{field}"] = current.isoformat() if isinstance(current, date) else current
+        address = self.session.scalar(select(cm.Address).where(
+            cm.Address.application_id == app.id, cm.Address.context == "residential", cm.Address.owner_id == app.id,
+        )) if app else None
+        for field in ("street_number", "street_name", "city", "state_province", "postal_code", "country_code"):
+            values[f"applicant.residential_address.{field}"] = getattr(address, field) if address else None
         funding = self.session.scalar(select(cm.FundingSource).where(
             cm.FundingSource.trip_plan_id == trip.id,
             cm.FundingSource.payer_kind == "sponsor",
@@ -456,6 +681,11 @@ class DynamicCaseService:
         )) if trip else None
         values["sponsor.person_id"] = str(funding.person_id) if funding and funding.person_id else None
         values["host.person_id"] = str(host.person_id) if host and host.host_type == "person" and host.person_id else None
+        primary_citizenship = self.session.scalar(select(cm.PersonCitizenship).where(
+            cm.PersonCitizenship.person_id == applicant.id,
+            cm.PersonCitizenship.is_primary.is_(True),
+        )) if applicant else None
+        values["applicant.citizenship.primary"] = primary_citizenship.country_code if primary_citizenship else None
         for key in FACT_FIELDS:
             fact = self._fact(case_id, key)
             values[key] = fact.value_json if fact else None

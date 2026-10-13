@@ -43,6 +43,8 @@ from ..services import (
 from ..services.requirements import DEFAULT_RULE_CATALOG
 from ..storage import LocalStorageProvider, StorageProvider
 from ..services.audit import case_audit_events
+from ..services.country_normalization import country_options
+from ..services.record_lifecycle import RecordLifecycleService
 
 
 router = APIRouter()
@@ -99,14 +101,19 @@ def service(session: Session) -> CoreDataService:
     return CoreDataService(session)
 
 
+@router.get("/reference/countries", response_model=list[schemas.CountryOptionRead])
+def list_country_options():
+    return country_options()
+
+
 @router.post("/cases", response_model=schemas.CaseRead, status_code=status.HTTP_201_CREATED)
 def create_case(payload: schemas.CaseCreate, session: SessionDep, user: CurrentUser):
     return CaseApplicationService(session).create_case(payload, audit_actor=user)
 
 
 @router.get("/cases", response_model=list[schemas.CaseRead])
-def list_cases(session: SessionDep):
-    return service(session).list_cases()
+def list_cases(session: SessionDep, view: str = "active"):
+    return service(session).list_cases(view=view)
 
 
 @router.get("/cases/{case_id}", response_model=schemas.CaseRead)
@@ -117,6 +124,24 @@ def get_case(case_id: uuid.UUID, session: SessionDep):
 @router.patch("/cases/{case_id}", response_model=schemas.CaseRead)
 def update_case(case_id: uuid.UUID, payload: schemas.CaseUpdate, session: SessionDep):
     return CaseApplicationService(session).update_case(case_id, payload)
+
+
+@router.post("/cases/{case_id}/archive", response_model=schemas.CaseRead)
+def archive_case(case_id: uuid.UUID, session: SessionDep, user: CurrentUser):
+    return RecordLifecycleService(session).archive_case(case_id, user)
+
+
+@router.post("/cases/{case_id}/restore", response_model=schemas.CaseRead)
+def restore_case(case_id: uuid.UUID, session: SessionDep, user: CurrentUser):
+    return RecordLifecycleService(session).restore_case(case_id, user)
+
+
+@router.delete("/cases/{case_id}", response_model=schemas.CaseRead)
+def delete_case(
+    case_id: uuid.UUID, payload: schemas.DeleteRecordRequest,
+    session: SessionDep, user: CurrentUser,
+):
+    return RecordLifecycleService(session).delete_case(case_id, user)
 
 
 @router.get("/cases/{case_id}/dynamic-status", response_model=schemas.DynamicCaseStatusRead)

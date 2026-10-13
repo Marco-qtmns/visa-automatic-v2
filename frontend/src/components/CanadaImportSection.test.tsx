@@ -88,9 +88,28 @@ it("keeps confirmed values editable and saves a correction", async () => {
   const confirmed = { ...base, status: "applied", canonical_review_state: "confirmed" as const };
   vi.mocked(api.listCanadaImportChanges).mockResolvedValue([confirmed]);
   render(<CanadaImportSection caseId="case-1" onChanged={vi.fn().mockResolvedValue(undefined)} />);
+  await user.click(await screen.findByRole("button", { name: "Confirmed" }));
   const input = await screen.findByLabelText("Application value");
   expect(input).toBeEnabled();
   await user.clear(input); await user.type(input, "1993-04-17");
   await user.click(screen.getByRole("button", { name: "Save correction and confirm" }));
   expect(api.confirmCanadaImportChange).toHaveBeenCalledWith("change-new", "1993-04-17", "manual-ui", undefined);
+});
+
+it("keeps Passport selected and moves a confirmed field between filters", async () => {
+  const user = userEvent.setup();
+  const confirmedPassport = { ...conflict, status: "applied", canonical_review_state: "corrected" as const };
+  vi.mocked(api.listCanadaImportChanges)
+    .mockResolvedValueOnce([base, conflict])
+    .mockResolvedValueOnce([base, confirmedPassport]);
+  render(<CanadaImportSection caseId="case-1" onChanged={vi.fn().mockResolvedValue(undefined)} />);
+  await screen.findByText("Applicant — Date of birth");
+  await user.click(screen.getByRole("button", { name: /Passport \(0\/1\)/ }));
+  const input = await screen.findByLabelText("Application value");
+  await user.clear(input); await user.type(input, "ZZ123456");
+  await user.click(screen.getByRole("button", { name: "Save correction and confirm" }));
+  expect(await screen.findByRole("heading", { name: "Passport" })).toBeInTheDocument();
+  expect(screen.queryByText("Applicant — Passport number")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Confirmed" }));
+  expect(await screen.findByText("Applicant — Passport number")).toBeInTheDocument();
 });

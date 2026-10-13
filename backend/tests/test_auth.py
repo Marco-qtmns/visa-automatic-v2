@@ -242,6 +242,6 @@ def test_consolidated_baseline_initializes_an_empty_database(tmp_path, monkeypat
     command.upgrade(config, "head")
     command.upgrade(config, "head")
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0001_consolidated_schema"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0002_record_lifecycle"
     assert {"auth_users", "auth_sessions", "auth_mfa_challenges"} <= set(inspect(engine).get_table_names())
     engine.dispose()

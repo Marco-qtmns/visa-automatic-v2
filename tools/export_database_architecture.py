@@ -13,7 +13,7 @@ from backend.app.database import Base
 from backend.app.models import *  # noqa: F401,F403
 
 
-REVISION = "0001_consolidated_schema"
+REVISION = "0002_record_lifecycle"
 DOMAINS = {
     "core_case_audit": [
         "cases", "persons", "case_person_roles", "facts",

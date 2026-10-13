@@ -31,6 +31,10 @@ class IntakeSubmission(Base):
         CheckConstraint(f"processing_status IN ({INTAKE_STATUSES})", name="intake_status_valid"),
         CheckConstraint("duplicate_receive_count >= 0", name="intake_duplicate_count_nonnegative"),
         CheckConstraint("retry_count >= 0", name="intake_retry_count_nonnegative"),
+        CheckConstraint(
+            "record_status IN ('ACTIVE', 'ARCHIVED', 'DELETED')",
+            name="intake_record_status_valid",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
@@ -54,6 +58,11 @@ class IntakeSubmission(Base):
     issue_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     duplicate_receive_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     retry_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    record_status: Mapped[str] = mapped_column(String(16), default="ACTIVE", nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_by: Mapped[str | None] = mapped_column(String(320))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(String(320))
 
 
 class IntakeProcessingAttempt(Base):

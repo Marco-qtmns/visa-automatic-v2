@@ -140,6 +140,12 @@ class TimestampMixin:
 
 class Case(TimestampMixin, Base):
     __tablename__ = "cases"
+    __table_args__ = (
+        CheckConstraint(
+            "record_status IN ('ACTIVE', 'ARCHIVED', 'DELETED')",
+            name="case_record_status_valid",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     case_number: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
@@ -157,6 +163,11 @@ class Case(TimestampMixin, Base):
         default=WorkflowState.INTAKE,
         nullable=False,
     )
+    record_status: Mapped[str] = mapped_column(String(16), default="ACTIVE", nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_by: Mapped[str | None] = mapped_column(String(320))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(String(320))
 
     persons: Mapped[list[Person]] = relationship(back_populates="case", cascade="all, delete-orphan")
     facts: Mapped[list[Fact]] = relationship(back_populates="case", cascade="all, delete-orphan")

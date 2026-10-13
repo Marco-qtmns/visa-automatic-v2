@@ -30,7 +30,7 @@ it("renders structured blockers and links to their canonical section", () => {
   expect(screen.getByRole("heading", { name: "Preparation" })).toBeInTheDocument();
   expect(screen.getByText("Passport number")).toBeInTheDocument();
   expect(screen.getByText("Enter the passport number.")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Open relevant canonical section" })).toHaveAttribute("href", "#canada-application");
+  expect(screen.getByRole("link", { name: "Open exact input" })).toHaveAttribute("href", "#canonical-applicant-passport-number");
   expect(screen.queryByRole("button", { name: /generate/i })).not.toBeInTheDocument();
 });
 

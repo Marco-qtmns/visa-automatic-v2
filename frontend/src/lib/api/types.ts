@@ -29,9 +29,16 @@ export interface CaseRecord {
   visa_type: string;
   purpose: string;
   workflow_state: WorkflowState;
+  record_status: "ACTIVE" | "ARCHIVED" | "DELETED";
+  archived_at: string | null;
+  archived_by: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export interface CountryOption { code: string; label: string; }
 
 export type CaseCreate = Partial<Pick<CaseRecord, "case_number" | "visa_type" | "purpose">>;
 export type CaseUpdate = Partial<CaseCreate>;
@@ -436,6 +443,7 @@ export interface CaseSummary {
   visa_type: string;
   purpose: string;
   workflow_state: WorkflowState;
+  record_status: "ACTIVE" | "ARCHIVED";
   issue_count: number;
   next_action: string;
   queue: "ACTION_REQUIRED" | "WAITING" | "REVIEW" | "READY";
@@ -465,6 +473,11 @@ export interface IntakeSubmission {
   issue_count: number;
   duplicate_receive_count: number;
   retry_count: number;
+  record_status: "ACTIVE" | "ARCHIVED" | "DELETED";
+  archived_at: string | null;
+  archived_by: string | null;
+  deleted_at: string | null;
+  deleted_by: string | null;
   applicant_display_name: string | null;
   case_number: string | null;
   can_retry: boolean;

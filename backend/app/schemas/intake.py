@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from .core import DeleteRecordRequest
+
 
 IntakeStatus = Literal["RECEIVED", "PROCESSING", "PROCESSED", "NEEDS_REVIEW", "FAILED"]
 
@@ -32,6 +34,11 @@ class IntakeSubmissionRead(IntakeReadModel):
     issue_count: int
     duplicate_receive_count: int
     retry_count: int
+    record_status: Literal["ACTIVE", "ARCHIVED", "DELETED"]
+    archived_at: datetime | None
+    archived_by: str | None
+    deleted_at: datetime | None
+    deleted_by: str | None
     applicant_display_name: str | None = None
     case_number: str | None = None
     can_retry: bool = False

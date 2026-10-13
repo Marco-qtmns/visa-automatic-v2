@@ -21,9 +21,10 @@ def application_bootstrap(
     response: Response,
     user: Annotated[User, Depends(require_authenticated_request)],
     session: Annotated[Session, Depends(get_session)],
+    case_view: str = "active",
 ):
     started = time.perf_counter()
-    summaries, database_ms = OperationalCaseService(session).case_summaries()
+    summaries, database_ms = OperationalCaseService(session).case_summaries(view=case_view)
     total_ms = (time.perf_counter() - started) * 1000
     response.headers["Server-Timing"] = (
         f'db;dur={database_ms:.2f};desc="case summary query", '

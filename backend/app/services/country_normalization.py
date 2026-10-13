@@ -114,6 +114,17 @@ def normalize_country(value: object) -> CountryNormalization:
     )
 
 
+def country_options() -> list[dict[str, str]]:
+    """Return the canonical ISO alpha-3 vocabulary for employee select controls."""
+    labels = {code: code for code in ISO_ALPHA3_CODES}
+    if pycountry is not None:
+        labels.update({country.alpha_3: country.name for country in pycountry.countries})
+    return [
+        {"code": code, "label": f"{labels[code]} ({code})"}
+        for code in sorted(ISO_ALPHA3_CODES, key=lambda item: (labels[item], item))
+    ]
+
+
 def split_country_values(value: object) -> list[str]:
     """Split explicit multi-citizenship answers without guessing comma semantics."""
     raw = str(value or "").strip()

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 EXPECTED_DATABASE=""
-EXPECTED_REVISION="0001_consolidated_schema"
+EXPECTED_REVISION="0002_record_lifecycle"
 EXPECTED_TABLE_COUNT="57"
 ENV_FILE=".env.production"
 CONFIRM_DATABASE=""

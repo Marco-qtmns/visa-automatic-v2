@@ -4,11 +4,30 @@ import { useState } from "react";
 import { api, type PreparationIssue, type PreparationRun, type PreparationStatus } from "@/lib/api";
 import { StatusBadge } from "./StatusBadge";
 
-function issueTarget(issue: PreparationIssue): string {
+export function preparationIssueTarget(issue: PreparationIssue): string | null {
   if (issue.section === "imports") return "#canada-import";
   if (issue.section === "facts") return "#needs-attention";
   if (issue.section === "documents") return "#documents";
-  return "#canada-application";
+  const aliases: Record<string, string> = {
+    "applicant.current_residence": "applicant.current_residence.country_code",
+    "applicant.passport.primary": "applicant.passport.number",
+    "trip.intake_purpose_text": "trip.purpose",
+    "facts.sponsor.exists": "sponsor.exists", "facts.host.exists": "host.exists",
+    "facts.trip.payer": "trip.payer", "funding.sponsor_person": "sponsor.person_id",
+    "host.primary": "host.person_id",
+  };
+  const path = aliases[issue.path] ?? issue.path;
+  const editable = path.startsWith("applicant.biography.") ||
+    path.startsWith("applicant.passport.") || path.startsWith("applicant.residential_address.") ||
+    ["applicant.family_name", "applicant.given_names", "applicant.citizenship.primary",
+      "applicant.current_residence.country_code", "application.mailing_same_as_residential",
+      "application.official_application_date", "applicant.contact.email", "applicant.contact.phone",
+      "trip.purpose", "trip.imm5257_purpose_code", "trip.arrival_date", "trip.departure_date",
+      "trip.available_funds_amount", "trip.available_funds_currency", "trip.funds_source_reference",
+      "sponsor.exists", "sponsor.person_id", "host.exists", "host.person_id", "trip.payer"].includes(path);
+  if (!editable) return null;
+  const canonicalPath = path.replace("applicant.contact.", "contact.");
+  return `#canonical-${canonicalPath.replaceAll(".", "-")}`;
 }
 
 const actor = process.env.NEXT_PUBLIC_WORKFLOW_ACTOR ?? "manual-ui";
@@ -59,7 +78,7 @@ export function PreparationSection({ caseId, workflowState, value, history, onCh
         <div className="detail-stack">{readiness.sections.map(section => (
           <div key={section.section} className="summary-item">
             <strong>{section.label}</strong><span>{section.blocking_count} blocking · {section.warning_count} warnings</span>
-            {section.issues.map(issue => <div key={`${issue.code}-${issue.path}`}><p><strong>{issue.label}</strong> — {issue.message}</p><p className="muted">{issue.action}</p><a href={issueTarget(issue)}>Open relevant canonical section</a></div>)}
+            {section.issues.map(issue => { const target = preparationIssueTarget(issue); return <div key={`${issue.code}-${issue.path}`}><p><strong>{issue.label}</strong> — {issue.message}</p><p className="muted">{issue.action}</p>{target ? <a href={target} onClick={() => setTimeout(() => { const input = document.querySelector<HTMLElement>(target); input?.closest("details")?.setAttribute("open", ""); input?.focus(); }, 0)}>Open exact input</a> : <span className="muted">No direct input is available here; use the indicated review workflow.</span>}</div>; })}
           </div>
         ))}</div>
       ) : <div className="detail-stack">

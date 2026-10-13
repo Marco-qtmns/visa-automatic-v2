@@ -5,9 +5,15 @@ import { api, loadCaseDetail } from "@/lib/api";
 import { CaseDetailClient, visibleWorkflowTargets, workflowActionLabel } from "./CaseDetailClient";
 import { detail } from "@/test/fixtures";
 
+const { currentUser } = vi.hoisted(() => ({ currentUser: vi.fn() }));
+vi.mock("./AuthShell", () => ({
+  useCurrentUser: currentUser,
+  useBootstrapCases: () => null,
+}));
+
 vi.mock("@/lib/api", async () => { const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api"); return { ...actual, loadCaseDetail: vi.fn(), api: { ...actual.api, transition: vi.fn(), updateTask: vi.fn() } }; });
 
-beforeEach(() => { vi.mocked(loadCaseDetail).mockResolvedValue(detail); vi.mocked(api.transition).mockResolvedValue({}); });
+beforeEach(() => { currentUser.mockReturnValue({ role: "ADMIN" }); vi.mocked(loadCaseDetail).mockResolvedValue(detail); vi.mocked(api.transition).mockResolvedValue({}); });
 it("renders every case area, conflicts, and backend next action", async () => { render(<CaseDetailClient caseId="case-1" />); expect(await screen.findByText("Resolve passport conflict")).toBeInTheDocument(); for (const heading of ["Overview", "People", "Facts", "Requirements", "Documents", "Tasks", "Compatibility workflow"]) expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument(); expect(screen.getByText("conflict")).toBeInTheDocument(); expect(screen.getAllByText("passport.pdf").length).toBeGreaterThan(0); });
 it("uses the transition endpoint behind a business action label", async () => { const user = userEvent.setup(); render(<CaseDetailClient caseId="case-1" />); await screen.findByRole("heading", { name: "Primary action" }); await user.type(screen.getByLabelText("Reason for DOCUMENTS"), "Intake reviewed"); await user.click(screen.getByRole("button", { name: "Continue application" })); expect(api.transition).toHaveBeenCalledWith("case-1", "DOCUMENTS", "manual-ui", "Intake reviewed"); });
 it("surfaces transition gate errors", async () => { vi.mocked(api.transition).mockRejectedValue(new Error("Resolve conflicts first")); const user = userEvent.setup(); render(<CaseDetailClient caseId="case-1" />); await user.click(await screen.findByRole("button", { name: "Continue application" })); expect(await screen.findByText("Resolve conflicts first")).toBeInTheDocument(); });
@@ -41,7 +47,22 @@ it("renders an empty source-first application without fake identity or broken va
   expect(await screen.findByRole("heading", { name: "Applicant not identified yet" })).toBeInTheDocument();
   expect(screen.getByText("Add an information source")).toBeInTheDocument();
   expect(screen.getByText("No active document requirements.")).toBeInTheDocument();
-  expect(screen.queryByText(/undefined|null/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/^undefined$|^null$/)).not.toBeInTheDocument();
+});
+
+it("keeps administrator diagnostics hidden from a case worker", async () => {
+  currentUser.mockReturnValue({ role: "CASE_WORKER" });
+  render(<CaseDetailClient caseId="case-1" />);
+  expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  expect(screen.queryByText("Advanced / Diagnostics")).not.toBeInTheDocument();
+});
+
+it("collapses Needs attention by default and humanizes document status", async () => {
+  render(<CaseDetailClient caseId="case-1" />);
+  const summary = await screen.findByText("1 total · 1 blocking");
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  expect(screen.getByText("Applicant — Passport bio page")).toBeInTheDocument();
+  expect(screen.queryByText("applicant — passport_bio_page")).not.toBeInTheDocument();
 });
 
 it("labels a people read failure as a load error, never a save error", async () => {

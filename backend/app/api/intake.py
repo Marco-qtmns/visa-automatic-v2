@@ -13,6 +13,7 @@ from ..database import get_session
 from ..schemas import intake as schemas
 from ..services.core import DomainValidationError
 from ..services.intake import GOOGLE_FORMS_CSV, IntakeService
+from ..services.record_lifecycle import RecordLifecycleService
 from ..storage import LocalStorageProvider, StorageProvider
 
 
@@ -56,8 +57,10 @@ async def receive_google_forms_csv(
 
 
 @router.get("/intake/submissions", response_model=list[schemas.IntakeSubmissionRead])
-def list_intake_submissions(session: SessionDep, storage: IntakeStorageDep):
-    return IntakeService(session, storage).list()
+def list_intake_submissions(
+    session: SessionDep, storage: IntakeStorageDep, view: str = "active",
+):
+    return IntakeService(session, storage).list(view=view)
 
 
 @router.get("/intake/submissions/{submission_id}", response_model=schemas.IntakeDetailRead)
@@ -80,6 +83,31 @@ def retry_intake_submission(
     return IntakeService(session, storage).retry(
         submission_id, requested_case_id=payload.case_id, actor=user
     )
+
+
+@router.post("/intake/submissions/{submission_id}/archive", response_model=schemas.IntakeSubmissionRead)
+def archive_intake_submission(
+    submission_id: uuid.UUID, session: SessionDep, storage: IntakeStorageDep, user: CurrentUser,
+):
+    item = RecordLifecycleService(session).archive_intake(submission_id, user)
+    return IntakeService(session, storage)._decorate(item)
+
+
+@router.post("/intake/submissions/{submission_id}/restore", response_model=schemas.IntakeSubmissionRead)
+def restore_intake_submission(
+    submission_id: uuid.UUID, session: SessionDep, storage: IntakeStorageDep, user: CurrentUser,
+):
+    item = RecordLifecycleService(session).restore_intake(submission_id, user)
+    return IntakeService(session, storage)._decorate(item)
+
+
+@router.delete("/intake/submissions/{submission_id}", response_model=schemas.IntakeSubmissionRead)
+def delete_intake_submission(
+    submission_id: uuid.UUID, payload: schemas.DeleteRecordRequest,
+    session: SessionDep, storage: IntakeStorageDep, user: CurrentUser,
+):
+    item = RecordLifecycleService(session).delete_intake(submission_id, user)
+    return IntakeService(session, storage)._decorate(item)
 
 
 @router.get("/intake/metrics", response_model=schemas.IntakeMetricsRead)

@@ -119,6 +119,27 @@ def test_official_unknown_and_fact_contradiction_surface_review(session):
     assert action.type == "REVIEW_CANADA_IMPORT" and action.import_run_id == run.id
 
 
+def test_verified_intake_proposes_only_supported_official_answer_implications(session):
+    case, _applicant, _app = setup_application(session)
+    legacy = CanadaCase(import_profile="verified_20260929")
+    legacy.identity.previous_residence_5y = "Não"
+    legacy.education.level = "Ensino superior completo"
+    legacy.history.criminal_history_answer = "Não"
+    run = preview(session, case, legacy, "8" * 64)
+    changes = {
+        item.source_path: item
+        for item in CanadaLegacyImportService(session).changes(run.id)
+    }
+    assert changes["official_review.previous_residence_over_six_months"].proposed_value_json == "no"
+    assert changes["official_review.post_secondary_education"].proposed_value_json == "yes"
+    assert changes["official_review.committed_arrested_charged_or_convicted_any_country"].proposed_value_json == "no"
+    assert all(changes[path].review_policy == "explicit_review" for path in (
+        "official_review.previous_residence_over_six_months",
+        "official_review.post_secondary_education",
+        "official_review.committed_arrested_charged_or_convicted_any_country",
+    ))
+
+
 def test_import_does_not_transition_workflow_and_records_provenance(session):
     case, applicant, _app = setup_application(session)
     before = case.workflow_state
@@ -313,14 +334,50 @@ def test_multiple_citizenships_create_distinct_canonical_rows(session):
     run = preview(session, case, legacy, "2" * 64)
     importer = CanadaLegacyImportService(session)
     changes = importer.changes(run.id)
-    assert [item.raw_value_json for item in changes] == ["Brasileira", "Canadense"]
-    assert [item.proposed_value_json for item in changes] == ["BRA", "CAN"]
+    answer = next(item for item in changes if item.target_field == "has_other_citizenship")
+    countries = [item for item in changes if item.target_entity_type == "citizenship"]
+    assert answer.proposed_value_json is True
+    assert [item.raw_value_json for item in countries] == ["Brasileira", "Canadense"]
+    assert [item.proposed_value_json for item in countries] == ["BRA", "CAN"]
     importer.apply(run.id, mode="safe", reviewed_by="worker@example.invalid")
     assert {
         row.country_code for row in session.scalars(
             select(cm.PersonCitizenship).where(cm.PersonCitizenship.person_id == applicant.id)
         )
     } == {"BRA", "CAN"}
+
+
+@pytest.mark.parametrize("raw", ["Não", "não", "NAO", " nao ", "No", " no "])
+def test_negative_other_citizenship_answer_persists_false_without_country_candidate(session, raw):
+    case, _applicant, _app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.identity.other_citizenship = raw
+    run = preview(session, case, legacy, hashlib.sha256(raw.encode()).hexdigest())
+    importer = CanadaLegacyImportService(session)
+    changes = importer.changes(run.id)
+    assert len(changes) == 1
+    assert changes[0].target_field == "has_other_citizenship"
+    assert changes[0].proposed_value_json is False
+    assert changes[0].status == "new"
+    importer.apply(run.id, mode="safe", reviewed_by="worker@example.invalid")
+    biography = session.get(cm.PersonBiography, _applicant.id)
+    assert biography.has_other_citizenship is False
+    assert session.scalar(select(func.count(cm.PersonCitizenship.id))) == 0
+
+
+@pytest.mark.parametrize("raw", ["Sim", "sim", " SIM ", "Yes", " yes "])
+def test_affirmative_other_citizenship_answer_persists_true_pending_country_details(session, raw):
+    case, applicant, _app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.identity.other_citizenship = raw
+    run = preview(session, case, legacy, hashlib.sha256((raw + "yes").encode()).hexdigest())
+    importer = CanadaLegacyImportService(session)
+    changes = importer.changes(run.id)
+    assert len(changes) == 1
+    assert changes[0].proposed_value_json is True
+    importer.apply(run.id, mode="safe", reviewed_by="worker@example.invalid")
+    assert session.get(cm.PersonBiography, applicant.id).has_other_citizenship is True
+    assert session.scalar(select(func.count(cm.PersonCitizenship.id))) == 0
 
 
 def test_explicit_person_host_choice_creates_linked_host_and_reviewable_address(session):
@@ -333,11 +390,14 @@ def test_explicit_person_host_choice_creates_linked_host_and_reviewable_address(
     run = preview(session, case, legacy, "3" * 64)
     importer = CanadaLegacyImportService(session)
     changes = importer.changes(run.id)
-    assert next(item for item in changes if item.source_path == "trip.visiting_person_or_institution").proposed_value_json == "person"
+    host_type = next(item for item in changes if item.source_path == "trip.visiting_person_or_institution")
+    host_name = next(item for item in changes if item.source_path == "trip.host_name")
+    assert host_type.proposed_value_json == "person"
+    assert host_type.conflict_type is None
+    assert host_name.conflict_type == "resolved_host_person"
+    assert all(item.conflict_type != "host_type_ambiguous" for item in changes)
     for item in changes:
-        if item.conflict_type == "host_type_ambiguous":
-            importer.review(item.id, "use_imported", "worker@example.invalid", host_type="person")
-        elif item.status == "new":
+        if item.status == "new":
             importer.review(item.id, "accept", "worker@example.invalid")
     importer.apply(run.id, reviewed_by="worker@example.invalid")
     host = session.scalar(select(cm.HostRecord))
@@ -488,6 +548,28 @@ def test_retry_after_failed_apply_has_no_partial_duplicate_state(session):
     importer.apply(run.id)
     assert session.get(models.Person, applicant.id).last_name == "Imported"
     assert session.scalar(select(func.count(cm.PersonBiography.person_id)).where(cm.PersonBiography.person_id == applicant.id)) == 0
+
+
+def test_payer_and_details_reuse_one_primary_funding_source(session):
+    case, _applicant, app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.trip.payer = "Other"
+    legacy.trip.payer_details = "Synthetic employer funding"
+    run = preview(session, case, legacy, "d" * 64)
+    importer = CanadaLegacyImportService(session)
+    for item in importer.changes(run.id):
+        importer.review(item.id, "accept", "worker@example.invalid")
+
+    importer.apply(run.id, reviewed_by="worker@example.invalid")
+
+    trip = session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == app.id))
+    funding = list(session.scalars(select(cm.FundingSource).where(
+        cm.FundingSource.trip_plan_id == trip.id
+    )))
+    assert len(funding) == 1
+    assert funding[0].payer_kind == "Other"
+    assert funding[0].description == "Synthetic employer funding"
+    assert funding[0].is_primary is True
 
 
 def test_low_level_apply_failure_is_sanitized_and_transactional(session, monkeypatch):

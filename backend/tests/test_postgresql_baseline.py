@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
     reason="POSTGRES_TEST_DATABASE_URL is required for PostgreSQL baseline tests",
 )
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-EXPECTED_REVISION = "0001_consolidated_schema"
+EXPECTED_REVISION = "0002_record_lifecycle"
 
 
 def _guard_disposable_database(url: str) -> None:

@@ -79,6 +79,9 @@ def test_permission_matrix_is_static_and_role_ordered():
     reviewer = permissions_for_role(UserRole.REVIEWER)
     admin = permissions_for_role(UserRole.ADMIN)
     assert Permission.PREPARATION_RUN in worker
+    assert Permission.CASE_ARCHIVE in worker
+    assert Permission.CASE_DELETE not in worker
+    assert Permission.ADVANCED_APPLICATION_EDIT not in worker
     assert {Permission.INTAKE_READ, Permission.INTAKE_PROCESS} <= worker
     assert Permission.WORKFLOW_REVIEW not in worker
     assert Permission.WORKFLOW_SUBMIT not in worker
@@ -86,6 +89,7 @@ def test_permission_matrix_is_static_and_role_ordered():
     assert Permission.USER_EDIT not in reviewer
     assert Permission.INTAKE_READ not in reviewer
     assert Permission.INTAKE_PROCESS not in reviewer
+    assert Permission.ADVANCED_APPLICATION_EDIT not in reviewer
     assert admin == frozenset(Permission)
 
 
