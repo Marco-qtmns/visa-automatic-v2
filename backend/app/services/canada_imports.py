@@ -308,6 +308,7 @@ class CanadaLegacyImportService:
             if candidate is not None:
                 self.session.add(candidate)
         self.session.flush()
+        self._classify_invalid_identifier_date_order(run, warnings)
         run.warnings_json = warnings
         self._refresh_counts(run)
         try:
@@ -317,6 +318,30 @@ class CanadaLegacyImportService:
             raise DomainValidationError("could not persist Canada import preview") from error
         self.session.refresh(run)
         return run
+
+    def _classify_invalid_identifier_date_order(self, run, warnings):
+        candidates = list(self.session.scalars(select(cm.CanadaImportCandidate).where(
+            cm.CanadaImportCandidate.import_run_id == run.id,
+            cm.CanadaImportCandidate.target_entity_type == "person_identifier",
+            cm.CanadaImportCandidate.target_field.in_({"issue_date", "expiry_date"}),
+        )))
+        by_record: dict[str, dict[str, cm.CanadaImportCandidate]] = {}
+        for item in candidates:
+            by_record.setdefault(item.source_record_key, {})[item.target_field] = item
+        for fields in by_record.values():
+            issue, expiry = fields.get("issue_date"), fields.get("expiry_date")
+            if issue is None or expiry is None:
+                continue
+            try:
+                invalid_order = _date(expiry.proposed_value_json) < _date(issue.proposed_value_json)
+            except DomainValidationError:
+                continue
+            if invalid_order:
+                expiry.status = "ambiguous"
+                expiry.conflict_type = "invalid_value"
+                warnings.append(
+                    f"{expiry.source_path}: expiry date precedes issue date and needs manual review"
+                )
 
     def _legacy_values(self, legacy: CanadaCase) -> Iterable[tuple[MappingEntry, str, Any, str]]:
         for mapping in AUDITED_GENERATOR_MAPPINGS:
@@ -888,9 +913,18 @@ class CanadaLegacyImportService:
                     item.target_entity_id, item.status = revision.id, "applied"
                 accepted = [item for item in accepted if item.target_entity_type != "representative_profile"]
             for item in accepted:
+                field_path = item.source_path
                 try:
                     self._apply_candidate(run, app, item)
                 except Exception as error:
+                    LOGGER.exception(
+                        "Canada import candidate failed",
+                        extra={
+                            "import_run_id": str(import_id),
+                            "field_path": field_path,
+                        },
+                    )
+                    self.session.rollback()
                     raise self._candidate_apply_error(item, error) from error
                 item.status = "applied"
             self.session.flush()

@@ -271,6 +271,75 @@ def test_failed_apply_rolls_back_the_complete_batch(session):
     assert session.get(cm.PersonBiography, applicant.id) is None
 
 
+def test_invalid_identity_date_order_is_excluded_from_safe_apply(session):
+    case, applicant, _app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.passport.identity_number = "SYNTHETIC-ID-001"
+    legacy.passport.identity_issue_date = "2023-12-06"
+    legacy.passport.identity_expiry_date = "0033-12-06"
+    run = preview(session, case, legacy, "7" * 64)
+    importer = CanadaLegacyImportService(session)
+    expiry = next(
+        item for item in importer.changes(run.id)
+        if item.source_path == "passport.identity_expiry_date"
+    )
+
+    assert expiry.status == "ambiguous"
+    assert expiry.conflict_type == "invalid_value"
+    assert expiry.classification == "INVALID"
+
+    importer.apply(run.id, mode="safe", reviewed_by="worker@example.invalid")
+    importer.apply(run.id, mode="safe", reviewed_by="worker@example.invalid")
+
+    identifier = session.scalar(select(cm.PersonIdentifier).where(
+        cm.PersonIdentifier.person_id == applicant.id
+    ))
+    assert identifier.issue_date.isoformat() == "2023-12-06"
+    assert identifier.expiry_date is None
+    assert session.scalar(select(func.count(cm.PersonIdentifier.id))) == 1
+
+
+def test_accepted_invalid_identity_date_order_rolls_back_with_field_error(session):
+    case, applicant, _app = setup_application(session)
+    session.add(cm.FieldProvenanceReview(
+        case_id=case.id,
+        entity_type="person",
+        entity_id=applicant.id,
+        field_key="last_name",
+        source_type="manual",
+        source_reference="employee",
+        review_state="confirmed",
+    ))
+    session.commit()
+    legacy = CanadaCase()
+    legacy.identity.family_name = "Imported"
+    legacy.passport.identity_number = "SYNTHETIC-ID-002"
+    legacy.passport.identity_issue_date = "2023-12-06"
+    legacy.passport.identity_expiry_date = "0033-12-06"
+    run = preview(session, case, legacy, "f" * 64)
+    importer = CanadaLegacyImportService(session)
+    changes = importer.changes(run.id)
+    imported_name = next(item for item in changes if item.source_path == "identity.family_name")
+    invalid_expiry = next(
+        item for item in changes if item.source_path == "passport.identity_expiry_date"
+    )
+    importer.review(imported_name.id, "use_imported", "worker@example.invalid")
+    importer.review(invalid_expiry.id, "use_imported", "worker@example.invalid")
+
+    with pytest.raises(DomainValidationError) as captured:
+        importer.apply(run.id, mode="safe", reviewed_by="worker@example.invalid")
+
+    detail = captured.value.api_detail
+    assert detail["category"] == "database_invariant"
+    assert detail["code"] == "IMPORT_FIELD_INVALID"
+    assert detail["field_path"] == "passport.identity_expiry_date"
+    assert "UPDATE" not in str(detail)
+    assert "person_identifier_date_order" not in str(detail)
+    session.refresh(applicant)
+    assert applicant.last_name == "Synthetic"
+    assert session.scalar(select(func.count(cm.PersonIdentifier.id))) == 0
+
+
 @pytest.mark.parametrize("source, expected", [
     ("Brasil", "BRA"), ("Brazil", "BRA"), ("Brésil", "BRA"),
     ("Brasilien", "BRA"), ("Switzerland", "CHE"), ("Schweiz", "CHE"),
