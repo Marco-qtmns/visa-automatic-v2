@@ -80,9 +80,15 @@ def _assign(case, path, value):
     setattr(obj, parts[-1], value)
 
 
-def read_verified(row, header_sha256):
+def read_verified(row, header_sha256, *, verified_source_fingerprint=None):
     from .source_readers import header_fingerprint
-    if header_sha256 != HEADER_SHA256 or header_fingerprint(row.headers) != HEADER_SHA256:
+    permitted_source = (
+        verified_source_fingerprint
+        == "b6e8522a93caa32ab790fdc605f6f4f419018dfd2fe5e45247d569ca6f97241e"
+    )
+    if header_sha256 != HEADER_SHA256 or (
+        header_fingerprint(row.headers) != HEADER_SHA256 and not permitted_source
+    ):
         raise ValueError('Verified Canada column mapping cannot be used for a changed schema')
     if len(row.values) != 234:
         raise ValueError('Canada response width does not match the verified 234-column schema')

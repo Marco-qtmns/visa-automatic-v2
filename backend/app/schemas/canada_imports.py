@@ -31,6 +31,19 @@ class CanadaImportRunRead(CanadaImportRunSummary):
     pass
 
 
+class CanadaCsvResponseSummary(BaseModel):
+    response_index: int
+    response_number: int
+    applicant_name: str | None
+    applicant_email: str | None
+    submission_timestamp: str | None
+
+
+class CanadaCsvResponseList(BaseModel):
+    source_hash: str
+    responses: list[CanadaCsvResponseSummary]
+
+
 class CanadaImportCandidateRead(ImportReadModel):
     id: uuid.UUID
     import_run_id: uuid.UUID

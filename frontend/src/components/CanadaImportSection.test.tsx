@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api, type CanadaImportChange, type CanadaImportRun } from "@/lib/api";
@@ -8,7 +8,7 @@ vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
   return { ...actual, api: { ...actual.api,
     listCanadaImports: vi.fn(), listCanadaImportChanges: vi.fn(),
-    previewCanadaImport: vi.fn(), applyCanadaImport: vi.fn(),
+    inspectCanadaCsvResponses: vi.fn(), previewCanadaImport: vi.fn(), applyCanadaImport: vi.fn(),
     reviewCanadaImportChange: vi.fn(), resolveCanadaImportChange: vi.fn(),
     confirmCanadaImportChange: vi.fn(),
     confirmCanadaImportSection: vi.fn(),
@@ -40,9 +40,30 @@ beforeEach(() => {
   vi.mocked(api.listCanadaImports).mockResolvedValue([run]);
   vi.mocked(api.listCanadaImportChanges).mockResolvedValue([base, conflict]);
   vi.mocked(api.applyCanadaImport).mockResolvedValue(run);
+  vi.mocked(api.inspectCanadaCsvResponses).mockResolvedValue({ source_hash: "file-hash", responses: [
+    { response_index: 0, response_number: 1, applicant_name: "Maria One", applicant_email: "one@example.com", submission_timestamp: "2026-10-01" },
+    { response_index: 1, response_number: 2, applicant_name: "Maria Two", applicant_email: "two@example.com", submission_timestamp: "2026-10-02" },
+  ] });
+  vi.mocked(api.previewCanadaImport).mockResolvedValue(run);
   vi.mocked(api.resolveCanadaImportChange).mockResolvedValue({ ...conflict, status: "accepted" });
   vi.mocked(api.confirmCanadaImportChange).mockResolvedValue({ ...conflict, status: "accepted" });
   vi.mocked(api.confirmCanadaImportSection).mockResolvedValue({ confirmed_ids: [base.id], skipped: [] });
+});
+
+it("CSV-06 to CSV-09 requires selecting one exact response before preview", async () => {
+  const user = userEvent.setup();
+  render(<CanadaImportSection caseId="case-1" onChanged={vi.fn().mockResolvedValue(undefined)} />);
+  await screen.findByText("Applicant — Date of birth");
+  const file = new File(["synthetic csv"], "synthetic.csv", { type: "text/csv" });
+  await user.upload(screen.getByLabelText("Source file"), file);
+  fireEvent.submit(screen.getByRole("button", { name: "Preview import" }).closest("form")!);
+  expect(await screen.findByRole("heading", { name: "Select an applicant" })).toBeInTheDocument();
+  expect(api.previewCanadaImport).not.toHaveBeenCalled();
+  expect(screen.getByRole("button", { name: "Preview selected response" })).toBeDisabled();
+  await user.selectOptions(screen.getByLabelText("Applicant response"), "1");
+  await user.click(screen.getByRole("button", { name: "Preview selected response" }));
+  expect(api.previewCanadaImport).toHaveBeenCalledWith("case-1", "google_verified_csv", file, "manual-ui", 1);
+  expect(api.applyCanadaImport).toHaveBeenCalledWith(run.id, "safe", "manual-ui");
 });
 
 it("confirms a section with one atomic API request", async () => {

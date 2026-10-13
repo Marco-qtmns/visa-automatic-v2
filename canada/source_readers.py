@@ -31,6 +31,11 @@ def header_fingerprint(headers: list[str]) -> str:
     return hashlib.sha256(json.dumps(headers, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
+GOOGLE_USERNAME_HEADER = "Nome de usuário"
+GOOGLE_USERNAME_PROFILE_SHA256 = "b6e8522a93caa32ab790fdc605f6f4f419018dfd2fe5e45247d569ca6f97241e"
+_EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
 def normalize_date(value: str) -> str:
     value = str(value or "").strip()
     nums = re.findall(r"\d+", value)
@@ -245,6 +250,25 @@ def canada_case_from_csv_row(row: CsvResponseRow) -> CanadaCase:
     fingerprint = header_fingerprint(row.headers)
     if fingerprint == HEADER_SHA256:
         return read_verified(row, fingerprint)
+    if fingerprint == GOOGLE_USERNAME_PROFILE_SHA256:
+        if len(row.headers) != 235 or _norm(row.headers[1]) != _norm(GOOGLE_USERNAME_HEADER):
+            raise ValueError("CSV_SCHEMA_MISMATCH: Google Forms respondent-email column is not in column 2")
+        username = _column_value(row, 1)
+        projected = CsvResponseRow(row.headers[:1] + row.headers[2:], row.values[:1] + row.values[2:])
+        case = read_verified(
+            projected, HEADER_SHA256,
+            verified_source_fingerprint=GOOGLE_USERNAME_PROFILE_SHA256,
+        )
+        dedicated_email = case.contact.email.strip()
+        if _EMAIL.fullmatch(username) and (not dedicated_email or dedicated_email.casefold() == username.casefold()):
+            case.contact.email = username
+            case.source_email = username
+        case.raw_response = row.raw_dict()
+        case.source_headers = list(row.headers)
+        case.source_header_sha256 = fingerprint
+        case.schema_version = "canada_trv_google_form_username_v1"
+        case.import_profile = "verified_20260929_username"
+        return case
     applicant_email, host_email = _contact_values(row, "E-mail")
     applicant_phone, host_phone = _contact_values(row, "Telefone")
     applicant_city = _applicant_city(row)
@@ -402,17 +426,28 @@ def read_google_forms_csv(path: str | Path) -> list[CanadaCase]:
         "81820c7095e89bb2809f1c674838a95a088524b15efa4e70827a7b535ac0117b": "canada_trv_google_form_v1",
         "858532075b08d4f9a2c0867e2981bbc78750be87fe5bd26517170ad296c870e2": "canada_trv_legacy_v1",
         "7136b956dfb5de8bad7231207fd665f1d982751d7d23a5a0aae14241b1883dfc": "canada_trv_archive_v1",
+        GOOGLE_USERNAME_PROFILE_SHA256: "canada_trv_google_form_username_v1",
     }
     version = versions.get(header_fingerprint(headers))
     if version is None:
-        raise ValueError("CSV_SCHEMA_MISMATCH: unknown, missing or reordered Canada headers")
+        duplicate_headers = sorted({header for header in headers if headers.count(header) > 1})
+        details = [f"column count {len(headers)} is unsupported (expected 234 or 235)"]
+        if duplicate_headers:
+            details.append(f"duplicated or ambiguous headers: {', '.join(duplicate_headers[:5])}")
+        if len(headers) == 235 and _norm(headers[1]) != _norm(GOOGLE_USERNAME_HEADER):
+            details.append(f"unexpected column 2 header: {headers[1]!r}; expected {GOOGLE_USERNAME_HEADER!r}")
+        details.append(f"ordered header fingerprint {header_fingerprint(headers)} is not registered")
+        raise ValueError("CSV_SCHEMA_MISMATCH: " + "; ".join(details))
     cases: list[CanadaCase] = []
 
-    for values in rows[1:]:
+    for response_number, values in enumerate(rows[1:], start=1):
         if not any(values):
             continue
         if len(values) != len(headers):
-            raise ValueError("CSV_SCHEMA_MISMATCH: response width differs from headers")
+            raise ValueError(
+                f"CSV_SCHEMA_MISMATCH: response {response_number} has {len(values)} columns; "
+                f"expected {len(headers)}"
+            )
         # Preserve column positions even if Google exported duplicate headers.
         padded = values + [""] * max(0, len(headers) - len(values))
         response = CsvResponseRow(headers, padded[:len(headers)])

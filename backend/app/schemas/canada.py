@@ -4,7 +4,9 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from ..config.imm5257 import IMM5257_PURPOSE_CODES
 
 from ..models.canada import (
     AddressContext, FamilyRelationshipType, HostType, OfficialAnswerValue,
@@ -167,6 +169,17 @@ class TripPlanWrite(BaseModel):
     available_funds_amount: float | None = Field(default=None, ge=0)
     available_funds_currency: str | None = Field(default=None, max_length=3)
     funds_source_reference: str | None = None
+
+    @field_validator("imm5257_purpose_code")
+    @classmethod
+    def supported_imm5257_purpose(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        if value not in IMM5257_PURPOSE_CODES:
+            raise ValueError(
+                "unsupported IMM5257 purpose code; choose Tourism, Family Visit, or Business"
+            )
+        return value
 
 
 class OrganizationCreate(BaseModel):

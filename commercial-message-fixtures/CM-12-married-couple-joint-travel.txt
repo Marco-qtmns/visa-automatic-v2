@@ -1,0 +1,1 @@
+@Equipe Vistos, dois candidatos: Ana Lopes e Daniel Lopes, casados, pretendem viajar juntos para conhecer Québec. Daniel pagará as despesas de ambos. Vão ficar em hotel. Criar e revisar os dados de cada pessoa separadamente.

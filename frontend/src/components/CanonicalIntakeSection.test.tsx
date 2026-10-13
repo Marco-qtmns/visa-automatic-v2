@@ -27,3 +27,12 @@ it("saves manual intake as one canonical decision batch with explicit unknowns",
   ]), "manual-ui");
   expect(changed).toHaveBeenCalled();
 });
+
+it("PURPOSE-01 to PURPOSE-03 explains and constrains the official purpose separately", () => {
+  render(<CanonicalIntakeSection caseId="case-1" status={detail.dynamicStatus} revisions={[]} people={detail.people} onChanged={vi.fn().mockResolvedValue(undefined)} />);
+  const purpose = screen.getByLabelText("Purpose of visit to Canada (IMM5257)");
+  expect(purpose).toHaveRole("combobox");
+  expect(screen.getByRole("option", { name: "Unresolved / not selected" })).toBeInTheDocument();
+  expect(screen.getByText(/separate from your detailed travel-purpose description/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Travel purpose")).toBeInTheDocument();
+});

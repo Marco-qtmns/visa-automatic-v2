@@ -31,3 +31,24 @@ def test_brazilian_address_preserves_raw_and_parses_only_certain_components():
     assert result.unit == "4"
     assert result.unresolved_text == "Centro"
     assert result.review_status == "needs_review"
+
+
+def test_addr_01_to_03_supported_and_ambiguous_formats_preserve_source():
+    full = normalize_address("Rua das Flores, 25, Centro, Brasília - DF, 70000-000")
+    assert (full.street_name, full.street_number, full.city, full.province_or_state) == (
+        "Rua das Flores", "25", "Brasília", "DF"
+    )
+    assert full.postal_code == "70000-000" and full.raw.startswith("Rua das Flores")
+    for source, street, number, unit in (
+        ("Rua das Flores 25", "Rua das Flores", "25", None),
+        ("25 Rua das Flores", "Rua das Flores", "25", None),
+        ("Av. Paulista, 1578", "Av. Paulista", "1578", None),
+        ("Rua das Flores, 25, Apto 302", "Rua das Flores", "25", "302"),
+    ):
+        parsed = normalize_address(source)
+        assert (parsed.street_name, parsed.street_number, parsed.unit, parsed.raw) == (
+            street, number, unit, source
+        )
+    ambiguous = normalize_address("Centro, Brasília, próximo ao shopping")
+    assert ambiguous.street_name is None and ambiguous.street_number is None
+    assert ambiguous.unresolved_text == "Centro, Brasília, próximo ao shopping"

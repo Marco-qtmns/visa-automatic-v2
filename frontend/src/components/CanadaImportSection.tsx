@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { api, type CanadaImportChange, type CanadaImportRun } from "@/lib/api";
+import { api, type CanadaCsvResponseSummary, type CanadaImportChange, type CanadaImportRun } from "@/lib/api";
 import { StatusBadge } from "./StatusBadge";
 
 const actor = process.env.NEXT_PUBLIC_WORKFLOW_ACTOR ?? "manual-ui";
@@ -60,6 +60,10 @@ export function CanadaImportSection({ caseId, onChanged }: { caseId: string; onC
   const [error, setError] = useState("");
   const [sectionNotice, setSectionNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [responses, setResponses] = useState<CanadaCsvResponseSummary[]>([]);
+  const [responseIndex, setResponseIndex] = useState<number | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
 
   async function load(preferred?: CanadaImportRun, forceNewest = false) {
     const nextRuns = await api.listCanadaImports(caseId);
@@ -86,11 +90,28 @@ export function CanadaImportSection({ caseId, onChanged }: { caseId: string; onC
   }
 
   async function upload(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const data = new FormData(event.currentTarget); const file = data.get("file");
-    if (!(file instanceof File) || !file.size) { setError("Choose an import file."); return; }
+    event.preventDefault(); const data = new FormData(event.currentTarget); const file = uploadFile;
+    if (!file?.size) { setError("Choose an import file."); return; }
+    const sourceType = String(data.get("source_type"));
+    if (sourceType === "google_verified_csv") {
+      setBusy(true); setError("");
+      try {
+        const result = await api.inspectCanadaCsvResponses(caseId, file);
+        if (result.responses.length > 1) {
+          setPendingFile(file); setResponses(result.responses); setResponseIndex(null); return;
+        }
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : "CSV responses could not be read."); return;
+      } finally { setBusy(false); }
+    }
+    await importResponse(file, sourceType, 0);
+  }
+
+  async function importResponse(file: File, sourceType: string, selectedIndex: number) {
     await act(async () => {
-      const preview = await api.previewCanadaImport(caseId, String(data.get("source_type")), file, actor);
+      const preview = await api.previewCanadaImport(caseId, sourceType, file, actor, selectedIndex);
       await api.applyCanadaImport(preview.id, "safe", actor);
+      setPendingFile(null); setResponses([]); setResponseIndex(null);
     }, true);
   }
 
@@ -125,9 +146,15 @@ export function CanadaImportSection({ caseId, onChanged }: { caseId: string; onC
     {sectionNotice && <div className="success-message" role="status">{sectionNotice}</div>}
     <form className="form-grid" onSubmit={upload}>
       <div className="field"><label htmlFor="canada-import-source">Source</label><select id="canada-import-source" name="source_type"><option value="google_verified_csv">Verified Google intake CSV</option><option value="canada_case_json">Canada case JSON</option><option value="representative_profile_json">Representative profile JSON</option></select></div>
-      <div className="field"><label htmlFor="canada-import-file">Source file</label><input id="canada-import-file" name="file" type="file" required /></div>
+      <div className="field"><label htmlFor="canada-import-file">Source file</label><input id="canada-import-file" name="file" type="file" required onChange={event => setUploadFile(event.target.files?.[0] ?? null)} /></div>
       <div className="button-row field-full"><button className="button" disabled={busy}>Preview import</button></div>
     </form>
+    {pendingFile && responses.length > 1 && <section className="summary-item" aria-label="Select applicant response">
+      <h3>Select an applicant</h3>
+      <p className="muted">This file contains {responses.length} responses. Select exactly one response to preview; unselected responses will not be imported.</p>
+      <div className="field"><label htmlFor="canada-response">Applicant response</label><select id="canada-response" value={responseIndex ?? ""} onChange={event => setResponseIndex(event.target.value === "" ? null : Number(event.target.value))}><option value="">Select an applicant</option>{responses.map(item => <option key={item.response_index} value={item.response_index}>Response {item.response_number} · {item.applicant_name ?? "Name unavailable"}{item.applicant_email ? ` · ${item.applicant_email}` : ""}{item.submission_timestamp ? ` · ${item.submission_timestamp}` : ""}</option>)}</select></div>
+      <button type="button" className="button" disabled={busy || responseIndex === null} onClick={() => responseIndex !== null && void importResponse(pendingFile, "google_verified_csv", responseIndex)}>Preview selected response</button>
+    </section>}
     {runs.length > 0 && <div className="field"><label htmlFor="canada-import-run">Import run</label><select id="canada-import-run" value={selected?.id ?? ""} onChange={event => { const run = runs.find(item => item.id === event.target.value); if (run) load(run).catch(() => setError("Import changes could not be loaded.")); }}>{runs.map(run => <option key={run.id} value={run.id}>{run.source_identifier} · {run.status}</option>)}</select></div>}
     {selected && <>
       <div className="success-message" role="status"><strong>Application intake processed</strong><br />{detected} values detected · {confirmedCount} confirmed · {unresolved.length} need attention</div>

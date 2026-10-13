@@ -22,6 +22,10 @@ from backend.app.services.canada import CanadaApplicationService
 from backend.app.services.canada_imports import CanadaLegacyImportService
 from backend.app.services.core import DomainValidationError
 from backend.app.services.workflow import WorkflowService
+from canada.source_readers import read_google_forms_csv
+
+
+BUGFIX_CSV = Path(__file__).parents[2] / "bugfix-fixtures/CANADA-TURISMO.csv"
 
 
 def setup_application(session):
@@ -39,6 +43,62 @@ def preview(session, case, legacy, digest="a" * 64):
         source_identifier="synthetic.canada-case.json", source_hash=digest,
         imported_by="tester@example.invalid",
     )
+
+
+def test_csv_01_to_04_verified_username_layout_preserves_mapping_and_provenance():
+    cases = read_google_forms_csv(BUGFIX_CSV)
+    assert len(cases) == 2
+    first = cases[0]
+    assert first.contact.email and "@" in first.contact.email
+    assert "@" not in first.identity.family_name
+    assert "@" not in first.identity.given_names
+    assert first.raw_response["Nome de usuário"][0] == first.contact.email
+    assert first.source_headers[1] == "Nome de usuário"
+    assert first.import_profile == "verified_20260929_username"
+
+
+def test_csv_03_non_email_username_is_preserved_but_not_fabricated(tmp_path):
+    import csv
+    rows = list(csv.reader(BUGFIX_CSV.open(encoding="utf-8-sig", newline="")))
+    rows[1][1] = "user123"
+    rows[1][52] = ""
+    path = tmp_path / "non-email.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        csv.writer(handle).writerows([rows[0], rows[1]])
+    case = read_google_forms_csv(path)[0]
+    assert case.contact.email == ""
+    assert case.raw_response["Nome de usuário"] == ["user123"]
+    assert "user123" not in {case.identity.family_name, case.identity.given_names}
+
+
+def test_csv_05_schema_mismatch_is_actionable(tmp_path):
+    path = tmp_path / "unsupported.csv"
+    path.write_text("Wrong,Duplicate,Duplicate\n1,2,3\n", encoding="utf-8")
+    with pytest.raises(ValueError) as error:
+        read_google_forms_csv(path)
+    detail = str(error.value)
+    assert "column count" in detail
+    assert "duplicated or ambiguous headers" in detail
+    assert "fingerprint" in detail
+
+
+def test_csv_06_to_09_response_selection_is_exact_and_file_bound(session):
+    case, _applicant, _app = setup_application(session)
+    content = BUGFIX_CSV.read_bytes()
+    importer = CanadaLegacyImportService(session)
+    listing = importer.csv_responses(content, BUGFIX_CSV.name)
+    assert [item["response_number"] for item in listing["responses"]] == [1, 2]
+    assert all(item["applicant_name"] for item in listing["responses"])
+    with pytest.raises(DomainValidationError, match="select one applicant"):
+        importer.preview_upload(case.id, "google_verified_csv", content, BUGFIX_CSV.name)
+    selected = importer.preview_upload(
+        case.id, "google_verified_csv", content, BUGFIX_CSV.name, response_index=1
+    )
+    changes = importer.changes(selected.id)
+    assert any(item.source_path == "identity.family_name" for item in changes)
+    assert selected.source_hash != listing["source_hash"]
+    with pytest.raises(DomainValidationError, match="does not exist"):
+        importer.preview_upload(case.id, "google_verified_csv", content, BUGFIX_CSV.name, response_index=2)
 
 
 def test_mapping_has_all_138_explicit_unique_paths():
@@ -347,7 +407,7 @@ def test_multiple_citizenships_create_distinct_canonical_rows(session):
     } == {"BRA", "CAN"}
 
 
-@pytest.mark.parametrize("raw", ["Não", "não", "NAO", " nao ", "No", " no "])
+@pytest.mark.parametrize("raw", ["Não", "não", "NAO", " nao ", "No", " no ", "False"])
 def test_negative_other_citizenship_answer_persists_false_without_country_candidate(session, raw):
     case, _applicant, _app = setup_application(session)
     legacy = CanadaCase()

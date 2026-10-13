@@ -1,0 +1,227 @@
+[
+  {
+    "id": "CM-01",
+    "file": "CM-01-adult-no-sponsor-no-host.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "no",
+    "host_expected": "no",
+    "format": "plain",
+    "scenario": "Adult self-funded traveler staying in hotel"
+  },
+  {
+    "id": "CM-02",
+    "file": "CM-02-adult-sponsor-no-host.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "yes",
+    "host_expected": "no",
+    "format": "plain",
+    "scenario": "Financial sponsor in Brazil; hotel, no Canadian host"
+  },
+  {
+    "id": "CM-03",
+    "file": "CM-03-adult-no-sponsor-with-host.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "no",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Canadian host offers accommodation but not financial sponsorship"
+  },
+  {
+    "id": "CM-04",
+    "file": "CM-04-adult-sponsor-with-host-same-person.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "yes",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Same person is sponsor and host"
+  },
+  {
+    "id": "CM-05",
+    "file": "CM-05-adult-sponsor-with-host-different.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "yes",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Separate sponsor and host"
+  },
+  {
+    "id": "CM-06",
+    "file": "CM-06-minor-both-parents-accompany.txt",
+    "applicant_type": "minor",
+    "sponsor_expected": "yes",
+    "host_expected": "no",
+    "format": "plain",
+    "scenario": "Minor accompanied by both parents; parents pay"
+  },
+  {
+    "id": "CM-07",
+    "file": "CM-07-minor-mother-accompanies-father-pays.txt",
+    "applicant_type": "minor",
+    "sponsor_expected": "yes",
+    "host_expected": "no",
+    "format": "plain",
+    "scenario": "Minor accompanied by mother; father funds"
+  },
+  {
+    "id": "CM-08",
+    "file": "CM-08-minor-unaccompanied-host-grandparent.txt",
+    "applicant_type": "minor",
+    "sponsor_expected": "yes",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Minor traveling without parents; parental support and Canadian grandparent host"
+  },
+  {
+    "id": "CM-09",
+    "file": "CM-09-minor-one-parent-accompanies-host-aunt.txt",
+    "applicant_type": "minor",
+    "sponsor_expected": "yes",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Minor traveling with one parent; separate sponsor and host"
+  },
+  {
+    "id": "CM-10",
+    "file": "CM-10-minor-guardian-not-confirmed.txt",
+    "applicant_type": "minor",
+    "sponsor_expected": "unknown",
+    "host_expected": "unknown",
+    "format": "plain",
+    "scenario": "Minor with unresolved legal guardianship and arrangements"
+  },
+  {
+    "id": "CM-11",
+    "file": "CM-11-parent-following-child-existing-case.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "unknown",
+    "host_expected": "unknown",
+    "format": "plain",
+    "scenario": "Referral linking mother to prior child case; do not reuse child identity"
+  },
+  {
+    "id": "CM-12",
+    "file": "CM-12-married-couple-joint-travel.txt",
+    "applicant_type": "multiple",
+    "sponsor_expected": "mixed",
+    "host_expected": "no",
+    "format": "plain",
+    "scenario": "Two applicants in message; payer shared; separate applicants"
+  },
+  {
+    "id": "CM-13",
+    "file": "CM-13-sponsor-offers-only-accommodation.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "no",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Accommodation-only host; do not treat as full sponsor"
+  },
+  {
+    "id": "CM-14",
+    "file": "CM-14-partial-sponsorship.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "yes",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Partial support; sponsor scope must be reviewed"
+  },
+  {
+    "id": "CM-15",
+    "file": "CM-15-uncertain-sponsor-and-host.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "unknown",
+    "host_expected": "unknown",
+    "format": "plain",
+    "scenario": "Tentative arrangements are unknown, not confirmed yes/no"
+  },
+  {
+    "id": "CM-16",
+    "file": "CM-16-contradictory-sponsor.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "conflict",
+    "host_expected": "no",
+    "format": "mixed",
+    "scenario": "Conflicting and later updated funding information; require review"
+  },
+  {
+    "id": "CM-17",
+    "file": "CM-17-contradictory-host.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "no",
+    "host_expected": "conflict",
+    "format": "mixed",
+    "scenario": "Host changed from hotel to friend; preserve change"
+  },
+  {
+    "id": "CM-18",
+    "file": "CM-18-not-a-sponsor-representative.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "no",
+    "host_expected": "no",
+    "format": "plain",
+    "scenario": "Visa representative is neither sponsor nor host"
+  },
+  {
+    "id": "CM-19",
+    "file": "CM-19-canadian-organization-invitation.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "yes",
+    "host_expected": "yes",
+    "format": "plain",
+    "scenario": "Organization may be host and partial payer; travel purpose requires review"
+  },
+  {
+    "id": "CM-20",
+    "file": "CM-20-family-relationship-ambiguous.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "unknown",
+    "host_expected": "unknown",
+    "format": "plain",
+    "scenario": "Do not invent host identity or sponsor"
+  },
+  {
+    "id": "CM-21",
+    "file": "CM-21-forwarded-multiple-people.txt",
+    "applicant_type": "multiple",
+    "sponsor_expected": "mixed",
+    "host_expected": "mixed",
+    "format": "plain",
+    "scenario": "Multiple applicants; avoid cross-case contamination"
+  },
+  {
+    "id": "CM-22",
+    "file": "CM-22-android-whatsapp.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "yes",
+    "host_expected": "no",
+    "format": "android",
+    "scenario": "Valid Android WhatsApp export"
+  },
+  {
+    "id": "CM-23",
+    "file": "CM-23-ios-whatsapp.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "no",
+    "host_expected": "yes",
+    "format": "ios",
+    "scenario": "Valid iOS WhatsApp export"
+  },
+  {
+    "id": "CM-24",
+    "file": "CM-24-incomplete-truncated-handoff.txt",
+    "applicant_type": "minor",
+    "sponsor_expected": "unknown",
+    "host_expected": "unknown",
+    "format": "plain",
+    "scenario": "Minor school group, guardian and payer unknown"
+  },
+  {
+    "id": "CM-25",
+    "file": "CM-25-third-party-forwarded-commercial.txt",
+    "applicant_type": "adult",
+    "sponsor_expected": "unknown",
+    "host_expected": "unknown",
+    "format": "plain",
+    "scenario": "Third-party referral; uncertainty and no invented applicant facts"
+  }
+]

@@ -51,6 +51,11 @@ class WhatsAppConversationParser:
                 messages.append({"sender": sender, "timestamp": timestamp, "text": body})
             elif messages and not _TIMESTAMPISH.match(line):
                 messages[-1]["text"] = f"{messages[-1]['text']}\n{line}".strip()
+                if line.strip():
+                    warnings.append({
+                        "line": line_number,
+                        "message": "Line had no WhatsApp header and was preserved as continuation text",
+                    })
             elif line.strip():
                 warnings.append({"line": line_number, "message": "Line did not match a supported WhatsApp header"})
                 messages.append({"sender": None, "timestamp": None, "text": line.strip()})

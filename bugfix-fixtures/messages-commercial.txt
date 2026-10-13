@@ -1,0 +1,9 @@
+Customer: Hello, I want to apply for a Canadian visitor visa.
+
+Employee: Do you have a valid passport?
+
+Customer: Yes, I have a Brazilian passport. It expires in December 2029.
+
+Employee: When are you planning to travel?
+
+Customer: In July 2027.

@@ -55,7 +55,11 @@ export function CommunicationsSection({ caseId, conversations, messages, runs, c
   async function extract(conversationId: string) {
     setBusy(conversationId); setError(""); setMessage("");
     try { const run = await api.extractConversationFacts(conversationId); setMessage(run.status === "failed" ? "Fact extraction unavailable. Manual fact entry remains available." : `${run.candidate_count} fact candidates extracted.`); await onChanged(); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Fact extraction could not be completed."); }
+    catch (reason) {
+      const detail = reason instanceof Error ? reason.message : "Fact extraction could not be completed.";
+      if (detail.includes("Automatic fact extraction is disabled")) setMessage("Automatic fact extraction is disabled. The conversation was saved and is available for manual review.");
+      else setError(detail);
+    }
     finally { setBusy(null); }
   }
   async function review(event: FormEvent<HTMLFormElement>) {

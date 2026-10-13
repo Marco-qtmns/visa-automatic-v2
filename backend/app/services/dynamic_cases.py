@@ -12,6 +12,7 @@ from ..models import canada as cm
 from ..schemas import core as schemas
 from .canada_preparation import CanadaPreparationReadinessService
 from .core import DomainNotFound, DomainValidationError
+from ..config.imm5257 import IMM5257_PURPOSE_CODES
 from .country_normalization import normalize_country
 from .person_roles import add_authoritative_role
 from .requirements import RequirementEngine
@@ -406,6 +407,10 @@ class CanonicalDecisionService:
                 value.strip().upper() if isinstance(value, str) and attr == "available_funds_currency" else
                 (value.strip() if isinstance(value, str) else value)
             )
+            if attr == "imm5257_purpose_code" and normalized not in {None, *IMM5257_PURPOSE_CODES}:
+                raise DomainValidationError(
+                    "unsupported IMM5257 purpose code; choose Tourism, Family Visit, or Business"
+                )
             setattr(trip, attr, normalized)
             if attr == "imm5257_purpose_code": trip.purpose_review_state = "confirmed" if value is not None else "needs_review"
             return old.isoformat() if isinstance(old, date) else float(old) if old is not None and attr == "available_funds_amount" else old, "trip_plan", trip.id

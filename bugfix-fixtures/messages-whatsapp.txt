@@ -1,0 +1,3 @@
+13/10/2026, 10:05 - Customer: Hello, I want to apply for a Canadian visitor visa.
+13/10/2026, 10:06 - Agent: Do you have a valid passport?
+13/10/2026, 10:07 - Customer: Yes, it expires in December 2029.

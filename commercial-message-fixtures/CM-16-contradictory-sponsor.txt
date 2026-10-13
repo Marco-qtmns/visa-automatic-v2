@@ -1,0 +1,4 @@
+[13/10/2026, 09:20] Cliente: Eu mesmo vou pagar a viagem para Toronto.
+[13/10/2026, 09:22] Atendente: Perfeito, sem patrocinador financeiro.
+[13/10/2026, 11:10] Cliente: Na verdade minha mãe pagará a passagem, eu pagarei o restante.
+Resumo comercial: Cliente ficará em hotel, sem anfitrião identificado.

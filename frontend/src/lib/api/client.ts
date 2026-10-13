@@ -36,6 +36,7 @@ import type {
   CanadaApplicationRecord,
   CanadaImportRun,
   CanadaImportChange,
+  CanadaCsvResponseList,
   IntakeMetrics,
   IntakeSubmission,
   DynamicCaseStatus,
@@ -450,10 +451,15 @@ export const api = {
     request<void>(`/canada-collections/${collection}/${recordId}`, { method: "DELETE" }),
   saveOfficialAnswer: (applicationId: string, questionCode: string, payload: Record<string, unknown>) =>
     request<{ id: string }>(`/canada-applications/${applicationId}/official-answers/${encodeURIComponent(questionCode)}`, json("PUT", payload)),
-  previewCanadaImport: (caseId: string, sourceType: string, file: File, importedBy?: string) => {
+  inspectCanadaCsvResponses: (caseId: string, file: File) => {
+    const form = new FormData(); form.set("file", file);
+    return request<CanadaCsvResponseList>(`/cases/${caseId}/canada-imports/responses`, { method: "POST", body: form });
+  },
+  previewCanadaImport: (caseId: string, sourceType: string, file: File, importedBy?: string, responseIndex?: number) => {
     const form = new FormData();
     form.set("source_type", sourceType); form.set("file", file);
     if (importedBy) form.set("imported_by", importedBy);
+    if (responseIndex !== undefined) form.set("response_index", String(responseIndex));
     return request<CanadaImportRun>(`/cases/${caseId}/canada-imports/preview`, { method: "POST", body: form });
   },
   listCanadaImports: (caseId: string) => request<CanadaImportRun[]>(`/cases/${caseId}/canada-imports`),

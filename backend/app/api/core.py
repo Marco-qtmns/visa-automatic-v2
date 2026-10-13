@@ -45,6 +45,7 @@ from ..storage import LocalStorageProvider, StorageProvider
 from ..services.audit import case_audit_events
 from ..services.country_normalization import country_options
 from ..services.record_lifecycle import RecordLifecycleService
+from ..services.core import DomainValidationError
 
 
 router = APIRouter()
@@ -289,6 +290,10 @@ def list_conversation_messages(conversation_id: uuid.UUID, session: SessionDep):
 def extract_conversation_facts(
     conversation_id: uuid.UUID, session: SessionDep, extractor: FactExtractorDep
 ):
+    if extractor.name == "disabled":
+        raise DomainValidationError(
+            "Automatic fact extraction is disabled. The conversation was saved and is available for manual review."
+        )
     return ConversationFactExtractionService(session, extractor).extract(conversation_id)
 
 

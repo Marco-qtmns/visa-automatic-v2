@@ -11,7 +11,7 @@ from ..config.canada_import_mapping import MAPPING_SPEC_JSON, MAPPING_VERSION
 from ..database import get_session
 from ..schemas import canada_imports as schemas
 from ..services.canada_imports import CanadaLegacyImportService, SOURCE_LIMITS
-from ..services.core import DomainValidationError
+from ..services.core import CoreDataService, DomainValidationError
 from ..services.documents import DocumentUploadTooLarge
 
 
@@ -32,7 +32,8 @@ def _employee_run(run):
 
 
 async def _preview(case_id: uuid.UUID, session: Session, file: UploadFile,
-                   source_type: str, imported_by: str | None):
+                   source_type: str, imported_by: str | None,
+                   response_index: int | None = None):
     if source_type not in SOURCE_LIMITS:
         raise DomainValidationError("unsupported Canada import source type")
     content = await file.read(SOURCE_LIMITS[source_type] + 1)
@@ -41,7 +42,15 @@ async def _preview(case_id: uuid.UUID, session: Session, file: UploadFile,
     return _employee_run(service(session).preview_upload(
         case_id, source_type, content,
         PurePath(file.filename or "import").name, imported_by,
+        response_index=response_index,
     ))
+
+
+@router.post("/cases/{case_id}/canada-imports/responses", response_model=schemas.CanadaCsvResponseList)
+async def inspect_csv_responses(case_id: uuid.UUID, session: SessionDep, file: UploadFile = File(...)):
+    CoreDataService(session).get_case(case_id)
+    content = await file.read(SOURCE_LIMITS["google_verified_csv"] + 1)
+    return service(session).csv_responses(content, PurePath(file.filename or "import.csv").name)
 
 
 @router.get("/canada-import-mapping", response_model=schemas.ImportMappingRead)
@@ -51,14 +60,16 @@ def mapping_specification():
 
 @router.post("/cases/{case_id}/canada-imports/preview", response_model=schemas.CanadaImportRunSummary, status_code=201)
 async def preview_import(case_id: uuid.UUID, session: SessionDep, file: UploadFile = File(...),
-                         source_type: str = Form(...), imported_by: str | None = Form(default=None)):
-    return await _preview(case_id, session, file, source_type, imported_by)
+                         source_type: str = Form(...), imported_by: str | None = Form(default=None),
+                         response_index: int | None = Form(default=None)):
+    return await _preview(case_id, session, file, source_type, imported_by, response_index)
 
 
 @router.post("/cases/{case_id}/canada-imports", response_model=schemas.CanadaImportRunSummary, status_code=201)
 async def create_import(case_id: uuid.UUID, session: SessionDep, file: UploadFile = File(...),
-                        source_type: str = Form(...), imported_by: str | None = Form(default=None)):
-    return await _preview(case_id, session, file, source_type, imported_by)
+                        source_type: str = Form(...), imported_by: str | None = Form(default=None),
+                        response_index: int | None = Form(default=None)):
+    return await _preview(case_id, session, file, source_type, imported_by, response_index)
 
 
 @router.get("/cases/{case_id}/canada-imports", response_model=list[schemas.CanadaImportRunSummary])

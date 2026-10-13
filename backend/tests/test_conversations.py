@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 import uuid
 
 from fastapi.testclient import TestClient
@@ -289,6 +290,38 @@ def test_provider_disabled_or_failure_preserves_import_and_manual_workflow(conve
 def test_fact_extraction_provider_is_disabled_by_default(monkeypatch):
     monkeypatch.delenv("FACT_EXTRACTION_PROVIDER", raising=False)
     assert isinstance(fact_extractor_from_environment(), DisabledFactExtractor)
+
+
+def test_msg_01_to_04_plain_and_mixed_text_preserve_every_source_line():
+    commercial = (Path(__file__).parents[2] / "bugfix-fixtures/Commercial_message.txt").read_text(encoding="utf-8")
+    plain = WhatsAppConversationParser().parse(commercial)
+    assert "\n".join(item.text for item in plain.messages) == commercial.strip()
+    assert plain.messages[0].timestamp is None and plain.messages[0].sender is None
+    assert plain.warnings
+    mixed_source = "Heading\n[02/10/2026, 09:15] Customer: Hello\nmanual note"
+    mixed = WhatsAppConversationParser().parse(mixed_source)
+    assert "Heading" in [item.text for item in mixed.messages]
+    assert any("manual note" in item.text for item in mixed.messages)
+    assert any(warning["line"] == 3 for warning in mixed.warnings)
+
+
+def test_ext_01_disabled_provider_does_not_create_extraction_run(session, monkeypatch):
+    monkeypatch.setenv("FACT_EXTRACTION_PROVIDER", "disabled")
+    def override_session():
+        yield session
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides.pop(fact_extraction_provider, None)
+    try:
+        client = TestClient(app)
+        case = create_case(client, "DISABLED")
+        conversation = paste(client, case, "Customer: Synthetic commercial message")
+        response = client.post(f"/conversations/{conversation['id']}/extract-facts")
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Automatic fact extraction is disabled. The conversation was saved and is available for manual review."
+        assert client.get(f"/conversations/{conversation['id']}/extraction-runs").json() == []
+        assert client.get(f"/conversations/{conversation['id']}/messages").json()[0]["text"]
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_privacy_raw_chat_is_not_logged(conversation_client, caplog):

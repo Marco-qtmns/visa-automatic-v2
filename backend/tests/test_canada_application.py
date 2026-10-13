@@ -151,6 +151,24 @@ def test_purpose_unknown_answer_and_occupation_authority(session):
     assert service.person_occupation(app.id, people[0].id) == "Canonical activity"
 
 
+def test_purpose_01_to_04_supported_codes_are_separate_and_invalid_is_not_persisted(session):
+    service, _case, _people, app = setup_application(session)
+    plan = service.upsert_trip_plan(app.id, cs.TripPlanWrite(
+        intake_purpose_text="Visiting family in Toronto for two weeks",
+        imm5257_purpose_code="Family Visit",
+        purpose_review_state="confirmed",
+    ))
+    assert plan.intake_purpose_text == "Visiting family in Toronto for two weeks"
+    assert plan.imm5257_purpose_code == "Family Visit"
+    with pytest.raises(ValueError, match="unsupported IMM5257 purpose code"):
+        cs.TripPlanWrite(
+            intake_purpose_text="Changed narrative",
+            imm5257_purpose_code="invented-code",
+        )
+    session.refresh(plan)
+    assert plan.imm5257_purpose_code == "Family Visit"
+
+
 def test_address_contexts_are_isolated(session):
     service, _case, _people, app = setup_application(session)
     residential = service.create_address(app.id, cs.AddressWrite(

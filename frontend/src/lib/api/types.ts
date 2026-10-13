@@ -607,6 +607,19 @@ export interface CanadaImportRun {
   completed_at: string | null;
 }
 
+export interface CanadaCsvResponseSummary {
+  response_index: number;
+  response_number: number;
+  applicant_name: string | null;
+  applicant_email: string | null;
+  submission_timestamp: string | null;
+}
+
+export interface CanadaCsvResponseList {
+  source_hash: string;
+  responses: CanadaCsvResponseSummary[];
+}
+
 export interface CanadaImportChange {
   id: string;
   import_run_id: string;

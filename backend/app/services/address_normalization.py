@@ -63,6 +63,14 @@ def normalize_address(
         leading_number = re.match(r"^(\d+[A-Za-z]?)\s+(.+)$", street)
         if leading_number and not number:
             number, street = leading_number.group(1), leading_number.group(2)
+    explicit_city = str(city or "").strip() or None
+    explicit_state = str(province_or_state or "").strip() or None
+    if not explicit_city and not explicit_state and trailing:
+        city_state = re.fullmatch(r"(.+?)\s+-\s+([A-Za-z]{2,3})", trailing[-1])
+        if city_state:
+            explicit_city = city_state.group(1).strip()
+            explicit_state = city_state.group(2).upper()
+            trailing = trailing[:-1]
     for fragment in trailing:
         if number is None and re.fullmatch(r"\d+[A-Za-z]?", fragment):
             number = fragment
@@ -80,8 +88,11 @@ def normalize_address(
             continue
         unresolved.append(fragment)
 
-    explicit_city = str(city or "").strip() or None
-    explicit_state = str(province_or_state or "").strip() or None
+    if street and not number:
+        # Locality-only prose is not a street. Preserve it unresolved instead.
+        if not re.match(r"^(?:rua|r\.|av\.?|avenida|estrada|rodovia|travessa|alameda)\b", street, re.I):
+            unresolved.insert(0, street)
+            street = None
     if not source:
         issues.append("missing_street_address")
     if not street:

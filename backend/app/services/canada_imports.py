@@ -76,13 +76,13 @@ LOGGER = logging.getLogger(__name__)
 class LegacySourceAdapter:
     source_type: str
 
-    def parse(self, content: bytes, filename: str) -> CanadaCase:
+    def parse(self, content: bytes, filename: str, response_index: int | None = None) -> CanadaCase:
         raise NotImplementedError
 
 class CanadaCaseImportAdapter(LegacySourceAdapter):
     source_type = "canada_case_json"
 
-    def parse(self, content: bytes, filename: str) -> CanadaCase:
+    def parse(self, content: bytes, filename: str, response_index: int | None = None) -> CanadaCase:
         if not PurePath(filename).name.endswith(".canada-case.json"):
             raise DomainValidationError("expected a .canada-case.json source")
         with _temporary_file(content, ".canada-case.json") as path:
@@ -92,20 +92,28 @@ class CanadaCaseImportAdapter(LegacySourceAdapter):
 class VerifiedGoogleImportAdapter(LegacySourceAdapter):
     source_type = "google_verified_csv"
 
-    def parse(self, content: bytes, filename: str) -> CanadaCase:
+    def responses(self, content: bytes, filename: str) -> list[CanadaCase]:
         if not PurePath(filename).name.casefold().endswith(".csv"):
             raise DomainValidationError("expected a verified Google Forms CSV source")
         with _temporary_file(content, ".csv") as path:
-            cases = read_google_forms_csv(path)
-        if len(cases) != 1:
-            raise DomainValidationError("preview requires a CSV containing exactly one response")
-        return cases[0]
+            return read_google_forms_csv(path)
+
+    def parse(self, content: bytes, filename: str, response_index: int | None = None) -> CanadaCase:
+        cases = self.responses(content, filename)
+        if not cases:
+            raise DomainValidationError("verified CSV contains no applicant responses")
+        if len(cases) > 1 and response_index is None:
+            raise DomainValidationError("select one applicant response before preview")
+        selected = 0 if response_index is None else response_index
+        if selected < 0 or selected >= len(cases):
+            raise DomainValidationError(f"response {selected + 1} does not exist in this source file")
+        return cases[selected]
 
 
 class RepresentativeProfileImportAdapter(LegacySourceAdapter):
     source_type = "representative_profile_json"
 
-    def parse(self, content: bytes, filename: str) -> CanadaCase:
+    def parse(self, content: bytes, filename: str, response_index: int | None = None) -> CanadaCase:
         if not PurePath(filename).name.endswith(".canada-representative.json"):
             raise DomainValidationError("expected a .canada-representative.json source")
         case = CanadaCase()
@@ -164,8 +172,8 @@ def _country(value: Any) -> str | None:
 
 def _yes_no(value: Any) -> str:
     text = str(value or "").strip().casefold()
-    if text in {"yes", "sim", "oui", "ja"}: return "yes"
-    if text in {"no", "não", "nao", "non", "nein"}: return "no"
+    if text in {"yes", "sim", "oui", "ja", "true"}: return "yes"
+    if text in {"no", "não", "nao", "non", "nein", "false"}: return "no"
     if text in {"n/a", "not applicable", "not_applicable"}: return "not_applicable"
     return "unknown"
 
@@ -188,14 +196,18 @@ class CanadaLegacyImportService:
         self.session = session
 
     def preview_upload(self, case_id: uuid.UUID, source_type: str, content: bytes,
-                       filename: str, imported_by: str | None = None) -> cm.CanadaLegacyImportRun:
+                       filename: str, imported_by: str | None = None,
+                       response_index: int | None = None) -> cm.CanadaLegacyImportRun:
         if source_type not in ADAPTERS:
             raise DomainValidationError("unsupported Canada import source type")
         if not content:
             raise DomainValidationError("import source is empty")
         if len(content) > SOURCE_LIMITS[source_type]:
             raise DomainValidationError("Canada import source exceeds the configured size limit")
-        source_hash = hashlib.sha256(content).hexdigest()
+        file_hash = hashlib.sha256(content).hexdigest()
+        source_hash = hashlib.sha256(
+            f"{file_hash}:response:{response_index if response_index is not None else 0}".encode()
+        ).hexdigest() if source_type == "google_verified_csv" else file_hash
         existing = self.session.scalar(select(cm.CanadaLegacyImportRun).where(
             cm.CanadaLegacyImportRun.case_id == case_id,
             cm.CanadaLegacyImportRun.source_type == source_type,
@@ -205,7 +217,9 @@ class CanadaLegacyImportService:
         if existing:
             return existing
         try:
-            legacy_case = ADAPTERS[source_type].parse(content, PurePath(filename).name)
+            legacy_case = ADAPTERS[source_type].parse(
+                content, PurePath(filename).name, response_index=response_index
+            )
         except (OSError, UnicodeError, ValueError, DomainValidationError) as error:
             failed = cm.CanadaLegacyImportRun(
                 case_id=case_id, source_type=source_type,
@@ -224,6 +238,28 @@ class CanadaLegacyImportService:
             source_identifier=PurePath(filename).name, source_hash=source_hash,
             imported_by=imported_by,
         )
+
+    def csv_responses(self, content: bytes, filename: str) -> dict[str, Any]:
+        if not content:
+            raise DomainValidationError("import source is empty")
+        if len(content) > SOURCE_LIMITS["google_verified_csv"]:
+            raise DomainValidationError("Canada import source exceeds the configured size limit")
+        cases = ADAPTERS["google_verified_csv"].responses(content, PurePath(filename).name)
+        return {
+            "source_hash": hashlib.sha256(content).hexdigest(),
+            "responses": [
+                {
+                    "response_index": index,
+                    "response_number": index + 1,
+                    "applicant_name": " ".join(filter(None, [
+                        case.identity.given_names.strip(), case.identity.family_name.strip(),
+                    ])) or None,
+                    "applicant_email": case.contact.email.strip() or None,
+                    "submission_timestamp": next(iter(case.raw_response.values()), [""])[0] or None,
+                }
+                for index, case in enumerate(cases)
+            ],
+        }
 
     def preview_case(self, case_id: uuid.UUID, legacy: CanadaCase, *, source_type: str,
                      source_identifier: str, source_hash: str | None = None,
@@ -255,6 +291,16 @@ class CanadaLegacyImportService:
         self.session.flush()
         warnings: list[str] = []
         self._host_type_proposal = self._propose_host_type(legacy)
+        respondent_values = legacy.raw_response.get("Nome de usuário", [])
+        respondent_email = next((str(value).strip() for value in respondent_values if "@" in str(value)), "")
+        self._respondent_email_conflict = bool(
+            respondent_email and legacy.contact.email
+            and respondent_email.casefold() != legacy.contact.email.strip().casefold()
+        )
+        if self._respondent_email_conflict:
+            warnings.append(
+                "Google Forms respondent email differs from the applicant email field; both source values were preserved and employee review is required."
+            )
         for mapping, record_key, value, source_classification in self._legacy_values(legacy):
             if _blank(value):
                 continue
@@ -359,6 +405,8 @@ class CanadaLegacyImportService:
             )
         if group == "family.members[*]" and record_key.startswith("parent:") and field == "relationship":
             warnings.append(f"{record_key}: parent role is not specific enough to infer mother/father")
+        if group == "contact" and field == "email" and getattr(self, "_respondent_email_conflict", False):
+            status, conflict_type = "ambiguous", "respondent_email_conflict"
         if group == "representative" and field == "cancelled_family_name":
             status, conflict_type = "ambiguous", "representative_person_selection_required"
             warnings.append("A cancelled representative must be selected by canonical person ID; name-only matching is forbidden.")
