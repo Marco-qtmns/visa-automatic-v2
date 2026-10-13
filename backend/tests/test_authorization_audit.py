@@ -139,6 +139,10 @@ def test_effective_fastapi_graph_has_exact_business_classification():
     assert sum(value == RouteAuthorizationClass.ADMIN_ONLY for value in classifications.values()) == 6
 
 
+def test_csv_responses_requires_case_read_permission():
+    assert ENDPOINT_PERMISSIONS["inspect_csv_responses"] == Permission.CASE_READ
+
+
 @pytest.mark.parametrize("current,target", [
     ("INTAKE", "DOCUMENTS"),
     ("DOCUMENTS", "PREPARE"),

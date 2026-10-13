@@ -139,7 +139,7 @@ def _assign(permission: Permission, *endpoint_names: str) -> None:
 _assign(Permission.CASE_READ,
     "application_bootstrap", "list_cases", "get_case", "list_country_options", "list_persons", "get_person", "list_conversations",
     "list_conversation_messages", "get_workflow", "get_next_action", "get_application",
-    "get_bundle", "list_imports", "get_import", "list_changes",
+    "get_bundle", "list_imports", "get_import", "list_changes", "inspect_csv_responses",
     "get_dynamic_case_status", "list_canonical_revisions",
 )
 _assign(Permission.LEGACY_DIAGNOSTICS_READ, "mapping_specification", "import_diagnostics")
