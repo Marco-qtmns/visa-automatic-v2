@@ -1,0 +1,47 @@
+name: Verify PostgreSQL baseline
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgresql-baseline:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.11-bookworm
+        env:
+          POSTGRES_DB: visa_automatic_ci_test
+          POSTGRES_USER: visa_automatic
+          POSTGRES_PASSWORD: synthetic-ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U visa_automatic -d visa_automatic_ci_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: python -m pip install --requirement requirements.txt
+
+      - name: Verify fresh PostgreSQL baseline and integrity
+        env:
+          POSTGRES_TEST_DATABASE_URL: postgresql+psycopg://visa_automatic:synthetic-ci-password@127.0.0.1:5432/visa_automatic_ci_test
+        run: PYTHONPATH=. pytest -q backend/tests/test_postgresql_baseline.py

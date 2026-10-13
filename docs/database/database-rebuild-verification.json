@@ -1,0 +1,73 @@
+{
+  "format_version": 1,
+  "generated_on": "2026-10-13",
+  "result": "baseline_verified_deployment_not_approved",
+  "source_protection": {
+    "branch": "codex/fix-fresh-db-migrations",
+    "starting_commit": "74b3cbf4f367a148872cf74191b111f8e69ff394",
+    "checkpoint_commit": "cd2093e",
+    "starting_modified_tracked_files": 28,
+    "starting_untracked_files": 5,
+    "remote_changed": false,
+    "pushed": false,
+    "legacy_production_repository_inspected": false
+  },
+  "schema": {
+    "database": "PostgreSQL 17",
+    "tested_server_version": "17.11",
+    "alembic_heads": ["0001_consolidated_schema"],
+    "table_count": 57,
+    "column_count": 642,
+    "constraint_counts": {
+      "primary_key": 57,
+      "foreign_key": 96,
+      "unique": 43,
+      "check": 66
+    },
+    "index_count": 74,
+    "fresh_install": "pass",
+    "repeated_upgrade": "pass",
+    "orm_conformity": "pass",
+    "baseline_snapshot_matches_generator": true,
+    "machine_readable_inventory": "docs/database/schema-architecture.json"
+  },
+  "verification": {
+    "python_runtime": "3.13.15",
+    "full_python_tests": {"passed": 470, "skipped": 3, "failed": 0},
+    "postgresql_tests": {"passed": 3, "failed": 0},
+    "final_postgresql_and_export_rerun": {"passed": 4, "failed": 0},
+    "phase_c_d_and_deployment_focus": {"passed": 52, "failed": 0},
+    "frontend_tests": {"passed": 64, "failed": 0},
+    "frontend_production_build": "pass",
+    "frontend_local_node_version": "26.10.0",
+    "rebuild_script_syntax": "pass",
+    "rebuild_script_missing_confirmation_guard": "pass",
+    "docker_compose": "not_run_docker_unavailable",
+    "raspberry_arm64": "not_run_not_authorized"
+  },
+  "environment_safety": {
+    "test_database": "isolated_disposable_postgresql_database",
+    "staging_database_modified": false,
+    "production_database_modified": false,
+    "raspberry_reset_executed": false
+  },
+  "known_remaining_defects": [
+    "legacy_canada_crud_can_bypass_canonical_decision_service",
+    "preparation_status_read_can_regress_stale_ready_state",
+    "candidate_persistence_is_source_specific",
+    "business_lifecycle_is_a_legacy_workflow_projection",
+    "document_processing_is_synchronous",
+    "append_only_history_depends_partly_on_service_and_role_discipline",
+    "docker_raspberry_persistence_backup_restore_not_verified"
+  ],
+  "deployment": {
+    "fresh_install_baseline_ready": true,
+    "raspberry_staging_accepted": false,
+    "production_ready": false,
+    "approval_required_for": [
+      "deployment/reinitialize-staging-db.sh --env-file .env.production --expected-database <name_ending_in__staging> --confirm-destroy <same_name>",
+      "any_storage_cleanup",
+      "push_or_merge"
+    ]
+  }
+}
