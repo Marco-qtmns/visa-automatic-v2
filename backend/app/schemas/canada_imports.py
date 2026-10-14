@@ -69,6 +69,7 @@ class CanadaImportCandidateRead(ImportReadModel):
     reviewed_by: str | None
     reviewed_at: datetime | None
     canonical_review_state: str | None = None
+    canonical_revision: int = 0
     created_at: datetime
 
 
@@ -96,6 +97,7 @@ class ImportResolveRequest(ImportReviewRequest):
 class ImportConfirmRequest(ImportReviewRequest):
     value: Any
     host_type: Literal["person", "organization"] | None = None
+    expected_revision: int = Field(ge=0)
 
 
 class ImportSectionConfirmItem(BaseModel):
@@ -103,6 +105,7 @@ class ImportSectionConfirmItem(BaseModel):
     change_id: uuid.UUID
     value: Any
     host_type: Literal["person", "organization"] | None = None
+    expected_revision: int = Field(ge=0)
 
 
 class ImportSectionConfirmRequest(ImportReviewRequest):

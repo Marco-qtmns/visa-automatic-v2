@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import csv
 import json
 import uuid
 from pathlib import Path
@@ -25,7 +26,28 @@ from backend.app.services.workflow import WorkflowService
 from canada.source_readers import read_google_forms_csv
 
 
-BUGFIX_CSV = Path(__file__).parents[2] / "bugfix-fixtures/CANADA-TURISMO.csv"
+VERIFIED_CSV = Path(__file__).parents[2] / "tests/fixtures/canada_20260929_synthetic.csv"
+
+
+@pytest.fixture
+def verified_username_csv(tmp_path):
+    headers, source = list(csv.reader(VERIFIED_CSV.open(encoding="utf-8", newline="")))
+    # The respondent-email export corrected the second parent label while the
+    # earlier 234-column fixture intentionally preserves the archived label.
+    headers[127] = "País de nascimento do genitor 2"
+    headers.insert(1, "Nome de usuário")
+    responses = []
+    for index, email in enumerate(("first@example.invalid", "second@example.invalid")):
+        row = list(source)
+        row[1] = f"Synthetic-{index}"
+        row[2] = f"Applicant-{index}"
+        row[51] = ""
+        row.insert(1, email)
+        responses.append(row)
+    path = tmp_path / "verified-username.csv"
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        csv.writer(handle).writerows([headers, *responses])
+    return path
 
 
 def setup_application(session):
@@ -45,8 +67,8 @@ def preview(session, case, legacy, digest="a" * 64):
     )
 
 
-def test_csv_01_to_04_verified_username_layout_preserves_mapping_and_provenance():
-    cases = read_google_forms_csv(BUGFIX_CSV)
+def test_csv_01_to_04_verified_username_layout_preserves_mapping_and_provenance(verified_username_csv):
+    cases = read_google_forms_csv(verified_username_csv)
     assert len(cases) == 2
     first = cases[0]
     assert first.contact.email and "@" in first.contact.email
@@ -57,9 +79,8 @@ def test_csv_01_to_04_verified_username_layout_preserves_mapping_and_provenance(
     assert first.import_profile == "verified_20260929_username"
 
 
-def test_csv_03_non_email_username_is_preserved_but_not_fabricated(tmp_path):
-    import csv
-    rows = list(csv.reader(BUGFIX_CSV.open(encoding="utf-8-sig", newline="")))
+def test_csv_03_non_email_username_is_preserved_but_not_fabricated(tmp_path, verified_username_csv):
+    rows = list(csv.reader(verified_username_csv.open(encoding="utf-8-sig", newline="")))
     rows[1][1] = "user123"
     rows[1][52] = ""
     path = tmp_path / "non-email.csv"
@@ -82,23 +103,23 @@ def test_csv_05_schema_mismatch_is_actionable(tmp_path):
     assert "fingerprint" in detail
 
 
-def test_csv_06_to_09_response_selection_is_exact_and_file_bound(session):
+def test_csv_06_to_09_response_selection_is_exact_and_file_bound(session, verified_username_csv):
     case, _applicant, _app = setup_application(session)
-    content = BUGFIX_CSV.read_bytes()
+    content = verified_username_csv.read_bytes()
     importer = CanadaLegacyImportService(session)
-    listing = importer.csv_responses(content, BUGFIX_CSV.name)
+    listing = importer.csv_responses(content, verified_username_csv.name)
     assert [item["response_number"] for item in listing["responses"]] == [1, 2]
     assert all(item["applicant_name"] for item in listing["responses"])
     with pytest.raises(DomainValidationError, match="select one applicant"):
-        importer.preview_upload(case.id, "google_verified_csv", content, BUGFIX_CSV.name)
+        importer.preview_upload(case.id, "google_verified_csv", content, verified_username_csv.name)
     selected = importer.preview_upload(
-        case.id, "google_verified_csv", content, BUGFIX_CSV.name, response_index=1
+        case.id, "google_verified_csv", content, verified_username_csv.name, response_index=1
     )
     changes = importer.changes(selected.id)
     assert any(item.source_path == "identity.family_name" for item in changes)
     assert selected.source_hash != listing["source_hash"]
     with pytest.raises(DomainValidationError, match="does not exist"):
-        importer.preview_upload(case.id, "google_verified_csv", content, BUGFIX_CSV.name, response_index=2)
+        importer.preview_upload(case.id, "google_verified_csv", content, verified_username_csv.name, response_index=2)
 
 
 def test_mapping_has_all_138_explicit_unique_paths():
@@ -146,6 +167,30 @@ def test_confirmed_conflict_requires_resolution_and_safe_batch_excludes_it(sessi
     importer.review(conflict.id, "use_imported", "employee")
     importer.apply(run.id, reviewed_by="employee")
     assert session.get(models.Person, applicant.id).last_name == "Different"
+
+
+def test_safe_apply_persists_without_claiming_employee_confirmation(session):
+    case, _applicant, app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.trip.purpose = "Visit friends"
+    run = preview(session, case, legacy)
+    importer = CanadaLegacyImportService(session)
+
+    importer.apply(run.id, mode="safe", reviewed_by="employee@example.invalid")
+
+    plan = session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == app.id))
+    assert plan.intake_purpose_text == "Visit friends"
+    change = importer.changes(run.id)[0]
+    assert change.status == "applied"
+    assert change.canonical_review_state == "unreviewed"
+    provenance = session.scalar(select(cm.FieldProvenanceReview).where(
+        cm.FieldProvenanceReview.case_id == case.id,
+        cm.FieldProvenanceReview.entity_id == plan.id,
+        cm.FieldProvenanceReview.field_key == "intake_purpose_text",
+        cm.FieldProvenanceReview.superseded_at.is_(None),
+    ))
+    assert provenance.review_state == "unreviewed"
+    assert provenance.reviewed_at is None
 
 
 def test_activity_source_link_reuses_identity_on_changed_reimport(session):
@@ -476,6 +521,51 @@ def test_multiple_citizenships_create_distinct_canonical_rows(session):
     } == {"BRA", "CAN"}
 
 
+def test_secondary_citizenship_links_remain_distinct_on_reimport(session):
+    case, applicant, _app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.identity.other_citizenship = "Brasileira; Canadense"
+    importer = CanadaLegacyImportService(session)
+    first = preview(session, case, legacy, "1" * 64)
+    importer.apply(first.id, mode="safe", reviewed_by="worker@example.invalid")
+
+    second = preview(session, case, legacy, "2" * 64)
+    changes = [
+        item for item in importer.changes(second.id)
+        if item.target_entity_type == "citizenship"
+    ]
+
+    assert len(changes) == 2
+    assert len({item.target_entity_id for item in changes}) == 2
+    importer.apply(second.id, mode="safe", reviewed_by="worker@example.invalid")
+    assert session.scalar(select(func.count(cm.PersonCitizenship.id)).where(
+        cm.PersonCitizenship.person_id == applicant.id,
+        cm.PersonCitizenship.is_primary.is_(False),
+    )) == 2
+
+
+def test_source_first_negative_other_citizenship_persists_false_without_country(session):
+    case = models.Case(
+        case_number="SYN-SOURCE-FIRST-FALSE",
+        visa_type="canada_trv",
+        purpose="Synthetic visit",
+    )
+    session.add(case)
+    session.commit()
+    legacy = CanadaCase()
+    legacy.identity.given_names = "Amina"
+    legacy.identity.family_name = "Synthetic"
+    legacy.identity.other_citizenship = "Não"
+    importer = CanadaLegacyImportService(session)
+    run = preview(session, case, legacy, "0" * 64)
+
+    importer.apply(run.id, mode="safe", reviewed_by="worker@example.invalid")
+
+    applicant = session.scalar(select(models.Person).where(models.Person.case_id == case.id))
+    assert session.get(cm.PersonBiography, applicant.id).has_other_citizenship is False
+    assert session.scalar(select(func.count(cm.PersonCitizenship.id))) == 0
+
+
 @pytest.mark.parametrize("raw", ["Não", "não", "NAO", " nao ", "No", " no ", "False"])
 def test_negative_other_citizenship_answer_persists_false_without_country_candidate(session, raw):
     case, _applicant, _app = setup_application(session)
@@ -746,6 +836,88 @@ def test_confirmed_import_field_can_be_corrected_through_service_with_audit_stat
     assert provenance.reviewed_by == "reviewer@example.invalid"
 
 
+def test_confirmation_persists_immediately_tracks_revisions_and_rejects_stale_edits(session):
+    case, _applicant, app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.trip.purpose = "Tourism"
+    run = preview(session, case, legacy, "3" * 64)
+    importer = CanadaLegacyImportService(session)
+    change = importer.changes(run.id)[0]
+
+    confirmed = importer.confirm(
+        change.id, "Tourism", "reviewer@example.invalid", expected_revision=0
+    )
+    trip = session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == app.id))
+    assert trip.intake_purpose_text == "Tourism"
+    assert confirmed.status == "applied"
+    assert confirmed.canonical_review_state == "confirmed"
+    revisions = list(session.scalars(select(models.CanonicalValueRevision).where(
+        models.CanonicalValueRevision.case_id == case.id
+    ).order_by(models.CanonicalValueRevision.revision)))
+    assert [(item.revision, item.value_json, item.review_state) for item in revisions] == [
+        (1, "Tourism", "confirmed")
+    ]
+
+    importer.confirm(
+        change.id, "Tourism", "reviewer@example.invalid", expected_revision=1
+    )
+    assert session.scalar(select(func.count(models.CanonicalValueRevision.id))) == 1
+
+    corrected = importer.confirm(
+        change.id, "Family visit", "editor@example.invalid", expected_revision=1
+    )
+    session.refresh(trip)
+    assert trip.intake_purpose_text == "Family visit"
+
+    conflicting = CanadaCase()
+    conflicting.trip.purpose = "Business"
+    second_run = preview(session, case, conflicting, "5" * 64)
+    second_change = importer.changes(second_run.id)[0]
+    assert second_change.status == "conflict"
+    assert second_change.conflict_type == "confirmed_canonical_value"
+    importer.apply(second_run.id, mode="safe", reviewed_by="worker@example.invalid")
+    session.refresh(trip)
+    assert trip.intake_purpose_text == "Family visit"
+    assert corrected.canonical_review_state == "corrected"
+    revisions = list(session.scalars(select(models.CanonicalValueRevision).where(
+        models.CanonicalValueRevision.case_id == case.id
+    ).order_by(models.CanonicalValueRevision.revision)))
+    assert [(item.original_value_json, item.value_json, item.reviewed_by) for item in revisions] == [
+        (None, "Tourism", "reviewer@example.invalid"),
+        ("Tourism", "Family visit", "editor@example.invalid"),
+    ]
+    with pytest.raises(DomainValidationError, match="stale canonical value"):
+        importer.confirm(
+            change.id, "Stale overwrite", "stale@example.invalid", expected_revision=1
+        )
+    session.refresh(trip)
+    assert trip.intake_purpose_text == "Family visit"
+
+
+def test_failed_confirmation_never_reports_confirmed_or_partially_writes(session, monkeypatch):
+    case, _applicant, app = setup_application(session)
+    legacy = CanadaCase()
+    legacy.trip.purpose = "Tourism"
+    run = preview(session, case, legacy, "4" * 64)
+    importer = CanadaLegacyImportService(session)
+    change = importer.changes(run.id)[0]
+    monkeypatch.setattr(
+        importer, "_apply_candidate",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("synthetic failure")),
+    )
+
+    with pytest.raises(DomainValidationError):
+        importer.confirm(
+            change.id, "Tourism", "reviewer@example.invalid", expected_revision=0
+        )
+
+    session.refresh(change)
+    assert change.status == "new"
+    assert change.canonical_review_state is None
+    assert session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == app.id)) is None
+    assert session.scalar(select(func.count(models.CanonicalValueRevision.id))) == 0
+
+
 def test_applied_fields_recover_missing_canonical_target_ids_for_reported_values(session):
     case, _applicant, app = setup_application(session)
     legacy = CanadaCase()
@@ -813,11 +985,13 @@ def test_section_confirmation_skips_conflicts_and_commits_eligible_fields_once(s
         "reason": "Resolve this conflict or rejected proposal individually.",
     }]
     session.refresh(purpose)
-    assert purpose.status == "accepted"
+    assert purpose.status == "applied"
     assert purpose.canonical_review_state == "confirmed"
     reloaded = {item.id: item for item in importer.changes(run.id)}
     assert reloaded[purpose.id].canonical_review_state == "confirmed"
     assert session.get(models.Person, applicant.id).last_name == "Synthetic"
+    trip = session.scalar(select(cm.TripPlan).where(cm.TripPlan.application_id == _app.id))
+    assert trip.intake_purpose_text == "Turismo"
 
 
 def test_source_first_import_can_identify_an_unnamed_case(session):

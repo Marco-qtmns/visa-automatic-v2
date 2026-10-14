@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import re
 
 MAPPING_VERSION = "m13-normalization-review-3"
 
@@ -115,3 +116,53 @@ AUDITED_GENERATOR_MAPPINGS = tuple(
 assert len(AUDITED_GENERATOR_MAPPINGS) == 138
 
 MAPPING_SPEC_JSON = tuple(asdict(entry) for entry in AUDITED_GENERATOR_MAPPINGS)
+
+
+def verified_csv_mapping_coverage(headers: list[str]) -> tuple[dict, ...]:
+    """Build the auditable CSV-to-canonical contract, including unsupported fields."""
+    from canada.verified_intake import COLUMN_TARGETS
+
+    mappings = {entry.legacy_path: entry for entry in AUDITED_GENERATOR_MAPPINGS}
+
+    def normalized(path: str) -> str:
+        path = re.sub(r"activities\[\d+\]", "activities[*]", path)
+        return re.sub(
+            r"family\.(?:parents|children)\[\d+\]", "family.members[*]", path
+        )
+
+    def dependency(path: str) -> str:
+        if path.startswith("applicant.biography") or "citizenship" in path:
+            return "applicant"
+        if path.startswith("applicant."):
+            return "applicant"
+        if path.startswith("family_relationships"):
+            return "related person and relationship"
+        if path.startswith(("trip_plan.funding", "trip_plan.host")):
+            return "trip plan"
+        if path.startswith(("education_records", "activity_records", "residence_history", "travel_history")):
+            return "applicant and Canada application"
+        return "Canada application"
+
+    rows = [{
+        "csv_index": 0,
+        "source_header": headers[0],
+        "parsed_source_path": "raw_response.timestamp",
+        "canonical_target": None,
+        "transform": "verbatim",
+        "required_dependency": None,
+        "review_policy": "not_applicable",
+        "classification": "metadata",
+    }]
+    for index, source_path in sorted(COLUMN_TARGETS.items()):
+        mapping = mappings.get(normalized(source_path))
+        rows.append({
+            "csv_index": index,
+            "source_header": headers[index],
+            "parsed_source_path": source_path,
+            "canonical_target": mapping.canonical_target if mapping else None,
+            "transform": mapping.transform if mapping else "none",
+            "required_dependency": dependency(mapping.canonical_target) if mapping else None,
+            "review_policy": mapping.review_policy if mapping else "unsupported",
+            "classification": "supported" if mapping else "unsupported",
+        })
+    return tuple(rows)

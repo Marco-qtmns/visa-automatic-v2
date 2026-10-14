@@ -470,9 +470,9 @@ export const api = {
     request<CanadaImportChange>(`/canada-import-changes/${changeId}/${action}`, json("POST", { reviewed_by: reviewedBy ?? null })),
   resolveCanadaImportChange: (changeId: string, decision: "keep_current" | "use_imported", reviewedBy?: string, hostType?: "person" | "organization") =>
     request<CanadaImportChange>(`/canada-import-changes/${changeId}/resolve`, json("POST", { decision, reviewed_by: reviewedBy ?? null, ...(hostType ? { host_type: hostType } : {}) })),
-  confirmCanadaImportChange: (changeId: string, value: unknown, reviewedBy?: string, hostType?: "person" | "organization") =>
-    request<CanadaImportChange>(`/canada-import-changes/${changeId}/confirm`, json("POST", { value, reviewed_by: reviewedBy ?? null, ...(hostType ? { host_type: hostType } : {}) })),
-  confirmCanadaImportSection: (importId: string, items: { change_id: string; value: unknown; host_type?: "person" | "organization" }[], reviewedBy?: string) =>
+  confirmCanadaImportChange: (changeId: string, value: unknown, expectedRevision: number, reviewedBy?: string, hostType?: "person" | "organization") =>
+    request<CanadaImportChange>(`/canada-import-changes/${changeId}/confirm`, json("POST", { value, expected_revision: expectedRevision, reviewed_by: reviewedBy ?? null, ...(hostType ? { host_type: hostType } : {}) })),
+  confirmCanadaImportSection: (importId: string, items: { change_id: string; value: unknown; expected_revision: number; host_type?: "person" | "organization" }[], reviewedBy?: string) =>
     request<import("./types").CanadaImportSectionConfirmResult>(`/canada-imports/${importId}/confirm-section`, json("POST", { items, reviewed_by: reviewedBy ?? null })),
 };
 

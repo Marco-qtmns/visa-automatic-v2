@@ -645,6 +645,7 @@ export interface CanadaImportChange {
   reviewed_by: string | null;
   reviewed_at: string | null;
   canonical_review_state?: "unreviewed" | "confirmed" | "corrected" | "needs_review" | "rejected" | null;
+  canonical_revision: number;
   created_at: string;
 }
 

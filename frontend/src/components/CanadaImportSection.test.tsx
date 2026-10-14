@@ -31,7 +31,8 @@ const base: CanadaImportChange = {
   raw_value_json: "17/04/1992",
   proposed_value_json: "1992-04-17", current_value_json: null, status: "new", conflict_type: null,
   review_policy: "safe_direct_batch", conflict_policy: "never_overwrite_reviewed",
-  reviewed_by: null, reviewed_at: null, created_at: "2026-10-02T00:00:00Z",
+  reviewed_by: null, reviewed_at: null, canonical_revision: 0,
+  created_at: "2026-10-02T00:00:00Z",
 };
 const conflict: CanadaImportChange = { ...base, id: "change-conflict", domain_section: "Passport", employee_label: "Passport number", target_label: "Applicant — Passport number", classification: "CONFLICT", source_path: "passport.number", target_field: "number", current_value_json: "AB123456", proposed_value_json: "XY987654", status: "conflict", conflict_type: "confirmed_canonical_value" };
 
@@ -72,7 +73,22 @@ it("confirms a section with one atomic API request", async () => {
   await screen.findByText("Applicant — Date of birth");
   await user.click(screen.getByRole("button", { name: "Confirm section" }));
   expect(api.confirmCanadaImportSection).toHaveBeenCalledTimes(1);
+  expect(api.confirmCanadaImportSection).toHaveBeenCalledWith(
+    run.id,
+    [expect.objectContaining({ change_id: base.id, expected_revision: 0 })],
+    "manual-ui",
+  );
   expect(api.confirmCanadaImportChange).not.toHaveBeenCalled();
+});
+
+it.each([false, 0])("treats %s as a reviewable value instead of missing", async value => {
+  vi.mocked(api.listCanadaImportChanges).mockResolvedValue([
+    { ...base, proposed_value_json: value },
+  ]);
+  render(<CanadaImportSection caseId="case-1" onChanged={vi.fn().mockResolvedValue(undefined)} />);
+  expect(await screen.findByText("Applicant — Date of birth")).toBeInTheDocument();
+  expect(screen.getByText("This source value requires employee confirmation.")).toBeInTheDocument();
+  expect(screen.queryByText("Missing")).not.toBeInTheDocument();
 });
 
 it("renders preview counts and domain sections", async () => {
@@ -91,7 +107,7 @@ it("requires a corrected invalid value before confirmation", async () => {
   expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
   await user.clear(input); await user.type(input, "ZZ123456");
   await user.click(screen.getByRole("button", { name: "Save correction and confirm" }));
-  expect(api.confirmCanadaImportChange).toHaveBeenCalledWith("change-conflict", "ZZ123456", "manual-ui", undefined);
+  expect(api.confirmCanadaImportChange).toHaveBeenCalledWith("change-conflict", "ZZ123456", 0, "manual-ui", undefined);
 });
 
 it("keeps section navigation and attention filtering in the unified form", async () => {
@@ -114,7 +130,7 @@ it("keeps confirmed values editable and saves a correction", async () => {
   expect(input).toBeEnabled();
   await user.clear(input); await user.type(input, "1993-04-17");
   await user.click(screen.getByRole("button", { name: "Save correction and confirm" }));
-  expect(api.confirmCanadaImportChange).toHaveBeenCalledWith("change-new", "1993-04-17", "manual-ui", undefined);
+  expect(api.confirmCanadaImportChange).toHaveBeenCalledWith("change-new", "1993-04-17", 0, "manual-ui", undefined);
 });
 
 it("keeps Passport selected and moves a confirmed field between filters", async () => {

@@ -116,7 +116,8 @@ def resolve_change(change_id: uuid.UUID, payload: schemas.ImportResolveRequest, 
 @router.post("/canada-import-changes/{change_id}/confirm", response_model=schemas.CanadaImportCandidateRead)
 def confirm_change(change_id: uuid.UUID, payload: schemas.ImportConfirmRequest, session: SessionDep):
     return service(session).confirm(
-        change_id, payload.value, payload.reviewed_by, host_type=payload.host_type
+        change_id, payload.value, payload.reviewed_by, host_type=payload.host_type,
+        expected_revision=payload.expected_revision,
     )
 
 

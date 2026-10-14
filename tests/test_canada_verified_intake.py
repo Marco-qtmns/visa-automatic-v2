@@ -8,6 +8,7 @@ import unittest
 from canada.case_store import load_case, save_case
 from canada.source_readers import CsvResponseRow, canada_case_from_csv_row, header_fingerprint, read_google_forms_csv
 from canada.verified_intake import HEADER_SHA256, COLUMN_TARGETS, read_verified
+from backend.app.config.canada_import_mapping import verified_csv_mapping_coverage
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -145,3 +146,21 @@ class VerifiedIntakeTests(unittest.TestCase):
             for path in row['reader_observation']['actual_targets']:
                 self.assertEqual(target_value(case,path),f"SYNTHETIC_R{row['csv_index']:03}")
         self.assertEqual(matrix['reader_audit']['all_populated_mapped_column_count'],233)
+
+    def test_generated_canonical_coverage_matrix_classifies_every_csv_field(self):
+        row = self.row()
+        matrix = verified_csv_mapping_coverage(row.headers)
+        self.assertEqual(len(matrix), 234)
+        self.assertEqual({item['csv_index'] for item in matrix}, set(range(234)))
+        supported = [item for item in matrix if item['classification'] == 'supported']
+        unsupported = [item for item in matrix if item['classification'] == 'unsupported']
+        self.assertEqual(len(supported), 143)
+        self.assertEqual(len(unsupported), 90)
+        for item in supported:
+            self.assertTrue(item['canonical_target'])
+            self.assertNotEqual(item['transform'], 'none')
+            self.assertTrue(item['required_dependency'])
+            self.assertNotEqual(item['review_policy'], 'unsupported')
+        for item in unsupported:
+            self.assertIsNone(item['canonical_target'])
+            self.assertEqual(item['review_policy'], 'unsupported')

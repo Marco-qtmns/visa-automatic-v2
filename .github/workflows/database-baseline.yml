@@ -44,7 +44,25 @@ jobs:
       - name: Verify API authorization classifications
         run: PYTHONPATH=. pytest -q backend/tests/test_authorization_audit.py
 
+      - name: Verify Canada import mapping and canonical confirmation lifecycle
+        run: PYTHONPATH=. pytest -q backend/tests/test_canada_imports.py tests/test_canada_verified_intake.py
+
       - name: Verify fresh PostgreSQL baseline and integrity
         env:
           POSTGRES_TEST_DATABASE_URL: postgresql+psycopg://visa_automatic:synthetic-ci-password@127.0.0.1:5432/visa_automatic_ci_test
         run: PYTHONPATH=. pytest -q backend/tests/test_postgresql_baseline.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Verify Canada import review lifecycle
+        working-directory: frontend
+        run: npm run test:run -- CanadaImportSection.test.tsx
